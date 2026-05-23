@@ -90,10 +90,10 @@ npm run dev
 
 如果这个项目对你有帮助，可以请开发者喝一杯咖啡 ❤️
 
-<div align="center">
-  <img src="/images/wechat.png" width="200" alt="微信收款码" style="border-radius:8px;margin-right:12px">
-  <img src="/images/alipay.jpg" width="200" alt="支付宝收款码" style="border-radius:8px">
-</div>
+<p align="center">
+  <img src="public/images/wechat.png" width="200" alt="微信收款码">
+  <img src="public/images/alipay.jpg" width="200" alt="支付宝收款码">
+</p>
 
 ## 📄 许可
 
