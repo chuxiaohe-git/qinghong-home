@@ -1,5 +1,7 @@
 # 轻鸿主页 🏠
 
+![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg) ![Vue 3](https://img.shields.io/badge/Vue-3-4FC08D?logo=vue.js) ![Python](https://img.shields.io/badge/Python-3.13-3776AB?logo=python)
+
 一个集**导航面板** + **待办管理** + **AI 对话**于一体的个人仪表板。
 
 ## ✨ 功能
