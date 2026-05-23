@@ -73,8 +73,8 @@ npm run dev
 │   │   ├── game/        # 游戏素材
 │   │   ├── backgrounds/ # 背景图片
 │   │   └── textures/    # 纹理素材
-│   │   ├── 微信.png     # 赞助收款码
-│   │   └── 支付宝.jpg
+│   │   ├── wechat.png   # 赞助收款码
+│   │   └── alipay.jpg
 │   ├── audio/sfx/       # 音效
 │   ├── fonts/           # 字体
 │   ├── characters/      # 游戏角色
@@ -91,8 +91,8 @@ npm run dev
 如果这个项目对你有帮助，可以请开发者喝一杯咖啡 ❤️
 
 <div align="center">
-  <img src="/images/微信.png" width="200" alt="微信收款码" style="border-radius:8px;margin-right:12px">
-  <img src="/images/支付宝.jpg" width="200" alt="支付宝收款码" style="border-radius:8px">
+  <img src="/images/wechat.png" width="200" alt="微信收款码" style="border-radius:8px;margin-right:12px">
+  <img src="/images/alipay.jpg" width="200" alt="支付宝收款码" style="border-radius:8px">
 </div>
 
 ## 📄 许可
