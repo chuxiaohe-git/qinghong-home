@@ -16,7 +16,14 @@
 
 ## 🖥️ 截图
 
-<!-- TODO: 添加截图 -->
+<p align="center">
+  <img src="public/images/screenshots/home.png" width="45%" alt="主界面">
+  <img src="public/images/screenshots/ai-chat.png" width="45%" alt="AI 对话">
+</p>
+<p align="center">
+  <img src="public/images/screenshots/notes.png" width="45%" alt="便签笔记">
+  <img src="public/images/screenshots/calendar.png" width="45%" alt="摸鱼日历">
+</p>
 
 ## 🛠️ 技术栈
 
