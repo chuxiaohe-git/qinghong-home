@@ -497,6 +497,11 @@ async function saveBookmark() {
   if (!form.value.url.trim()) { modalError.value = '请输入链接'; return }
   if (!editGroup.value) { modalError.value = '请选择分组'; return }
 
+  // 自动补全 https://
+  let url = form.value.url.trim()
+  if (!/^https?:\/\//i.test(url)) url = 'https://' + url
+  form.value.url = url
+
   saving.value = true
   try {
     const data = { ...form.value, group_id: editGroup.value.id }

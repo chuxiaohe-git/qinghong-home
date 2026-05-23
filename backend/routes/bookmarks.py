@@ -59,6 +59,10 @@ def create_bookmark():
     if not group_id:
         return error('请选择分组')
 
+    # 自动补全 https://
+    if not url.startswith(('http://', 'https://')):
+        url = 'https://' + url
+
     # verify group belongs to user
     from models.group import Group
     group = Group.query.filter_by(id=group_id, user_id=user_id).first()
@@ -101,6 +105,9 @@ def update_bookmark(bookmark_id):
 
     data = request.get_json()
     try:
+        # 自动补全 url 协议
+        if 'url' in data and data['url'] and not data['url'].startswith(('http://', 'https://')):
+            data['url'] = 'https://' + data['url']
         for field in ('title', 'url', 'description', 'icon', 'bg_color', 'open_method', 'group_id'):
             if field in data:
                 setattr(bookmark, field, data[field])
