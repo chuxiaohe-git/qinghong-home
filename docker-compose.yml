@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: qinghong-home
+    restart: always
+    ports:
+      - "8889:5000"
+    environment:
+      - TZ=Asia/Shanghai
+      - SECRET_KEY=your-secret-key-here
+      - JWT_SECRET_KEY=your-jwt-secret-here
+    volumes:
+      - ./data/instance:/app/backend/instance
+      - ./data/uploads:/app/backend/uploads
+      - ./data/backups:/app/backend/backups
+      - ./backend:/app/backend          # 代码卷挂载：改文件即生效

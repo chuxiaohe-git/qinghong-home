@@ -1,0 +1,20 @@
+sequenceDiagram
+    participant User as 用户
+    participant SN as ScratchNote.vue
+    participant API as todo.js (前端API)
+    participant Backend as Flask /api/todos
+    participant DB as SQLite
+    participant TP as TodoPanel.vue
+
+    User->>SN: 右键笔记条目
+    SN->>SN: contextmenu → 显示菜单「添加到待办」
+    User->>SN: 点击「添加到待办」
+    SN->>API: createTodo(title, note_id, notebook_id)
+    API->>Backend: POST /api/todos { title, note_id, notebook_id }
+    Backend->>DB: INSERT todo + note_id
+    Backend-->>API: { code:0, data:{id, title, note_id, ...} }
+    API-->>SN: 返回 todo 数据
+    SN->>SN: 刷新 linkedTodoIds 状态
+    SN->>SN: 笔记标题旁显示角标 📌
+    SN->>TP: emit('todo-changed')
+    TP->>TP: loadTodos() 刷新列表

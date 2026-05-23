@@ -1,0 +1,31 @@
+{
+  "name": "qinghong-frontend",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "axios": "^1.16.0",
+    "markdown-it": "^14.1.1",
+    "page-flip": "^2.0.7",
+    "pinia": "^3.0.4",
+    "pinyin-pro": "^3.28.1",
+    "sortablejs": "^1.15.7",
+    "vue": "^3.5.34",
+    "vue-router": "^4.6.4"
+  },
+  "devDependencies": {
+    "@types/sortablejs": "^1.15.9",
+    "@vitejs/plugin-vue": "^6.0.6",
+    "@vue/test-utils": "^2.4.10",
+    "jsdom": "^29.1.1",
+    "vite": "^8.0.12",
+    "vitest": "^4.1.7"
+  }
+}

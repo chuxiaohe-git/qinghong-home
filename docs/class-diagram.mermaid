@@ -1,0 +1,49 @@
+classDiagram
+    class Todo {
+        +int id
+        +int user_id
+        +string title
+        +bool done
+        +int priority
+        +int sort_order
+        +string color
+        +string label
+        +date date
+        +datetime reminder_at
+        +bool reminded
+        +int note_id            # [NEW] 关联笔记 ID（nullable）
+        +int notebook_id        # [NEW] 关联笔记本 ID（nullable）
+        +string selected_text   # [NEW] 选中文本片段（nullable）
+        +datetime created_at
+        +datetime updated_at
+        +dict to_dict()
+    }
+
+    class Note {
+        +int id
+        +int notebook_id
+        +int user_id
+        +string title
+        +string content
+        +int sort_order
+        +datetime created_at
+        +datetime updated_at
+        +dict to_dict(include_content)
+    }
+
+    class Notebook {
+        +int id
+        +int user_id
+        +string title
+        +string color
+        +string color2
+        +int sort_order
+        +datetime created_at
+        +datetime updated_at
+        +list notes
+        +dict to_dict()
+    }
+
+    Todo "0..*" --> "0..1" Note : note_id
+    Todo "0..*" --> "0..1" Notebook : notebook_id
+    Note "*" --> "1" Notebook : notebook_id
