@@ -1,8 +1,13 @@
 import requests
 import random
+import os
+import time
+import io
 from flask import Blueprint, request
 from bs4 import BeautifulSoup
+from PIL import Image
 from utils.response import success, error
+from config import Config
 
 scrape_bp = Blueprint('scrape', __name__, url_prefix='/api/scrape')
 
@@ -119,9 +124,29 @@ def scrape_icons():
     return success({'icons': icons})
 
 
+FAVICON_SIZE = 50  # 固定裁剪尺寸
+
+
+def _resize_favicon(img: Image.Image) -> Image.Image:
+    """将图标居中裁剪为正方形并缩放到 FAVICON_SIZE"""
+    w, h = img.size
+    # 转 RGBA 统一处理（兼容 ico / 带 alpha 的 png）
+    if img.mode != 'RGBA':
+        img = img.convert('RGBA')
+    # 居中裁切正方形
+    min_dim = min(w, h)
+    left = (w - min_dim) // 2
+    top = (h - min_dim) // 2
+    img = img.crop((left, top, left + min_dim, top + min_dim))
+    # 超过目标尺寸才缩放
+    if min_dim > FAVICON_SIZE:
+        img = img.resize((FAVICON_SIZE, FAVICON_SIZE), Image.LANCZOS)
+    return img
+
+
 @scrape_bp.route('/favicon', methods=['GET'])
 def fetch_favicon():
-    """从网址页面抓取真实的 favicon 地址"""
+    """从网址获取图标，大图自动裁剪到 50x50 并存到本地"""
     url = request.args.get('url', '').strip()
     if not url:
         return error('请提供网址', 400)
@@ -132,39 +157,61 @@ def fetch_favicon():
     try:
         from urllib.parse import urlparse
         domain = urlparse(url).hostname
-        if domain:
-            # 用 favicon.im 获取图标（国内可用的第三方服务）
-            return success({'favicon': f'https://favicon.im/{domain}'})
-        resp = requests.get(url, headers=HEADERS, timeout=8)
-        domain = urlparse(url).netloc
+        if not domain:
+            return error('无法解析域名', 400)
 
-        if resp.status_code == 200:
-            soup = BeautifulSoup(resp.text, 'lxml')
-            # 查找 <link rel="icon"> 或 <link rel="shortcut icon">
-            icon_link = (
-                soup.find('link', rel=lambda v: v and 'icon' in v.lower())
-                or soup.find('link', attrs={'rel': 'apple-touch-icon'})
-            )
-            if icon_link:
-                href = icon_link.get('href', '')
-                if href:
-                    # 处理相对路径
-                    if href.startswith('//'):
-                        href = 'https:' + href
-                    elif href.startswith('/'):
-                        parsed = urlparse(url)
-                        href = f'{parsed.scheme}://{parsed.netloc}{href}'
-                    elif not href.startswith(('http://', 'https://')):
-                        parsed = urlparse(url)
-                        href = f'{parsed.scheme}://{parsed.netloc}/{href.lstrip("/")}'
-                    return success({'favicon': href})
+        # 收集候选图标 URL：页面声明 > favicon.im 兜底 > /favicon.ico
+        candidates = []
 
-        # 兜底：直接尝试 /favicon.ico
-        fallback = f'https://{domain}/favicon.ico'
-        return success({'favicon': fallback})
+        # ① 尝试从 HTML 中解析声明的 icon
+        try:
+            resp = requests.get(url, headers=HEADERS, timeout=8)
+            if resp.status_code == 200:
+                soup = BeautifulSoup(resp.text, 'lxml')
+                icon_link = (
+                    soup.find('link', rel=lambda v: v and 'icon' in v.lower())
+                    or soup.find('link', attrs={'rel': 'apple-touch-icon'})
+                )
+                if icon_link:
+                    href = icon_link.get('href', '')
+                    if href:
+                        if href.startswith('//'):
+                            href = 'https:' + href
+                        elif href.startswith('/'):
+                            href = f'https://{domain}{href}'
+                        elif not href.startswith(('http://', 'https://')):
+                            href = f'https://{domain}/{href.lstrip("/")}'
+                        candidates.append(href)
+        except Exception:
+            pass
+
+        # ② favicon.im 第三方服务
+        candidates.append(f'https://favicon.im/{domain}')
+
+        # ③ 标准 /favicon.ico
+        candidates.append(f'https://{domain}/favicon.ico')
+
+        # 逐个尝试下载并处理
+        for candidate in candidates:
+            try:
+                img_resp = requests.get(candidate, headers=HEADERS, timeout=6)
+                if img_resp.status_code != 200:
+                    continue
+                img = Image.open(io.BytesIO(img_resp.content))
+                img = _resize_favicon(img)
+                # 存盘
+                ext = 'png'
+                filename = f'fav_{domain}_{int(time.time())}.{ext}'
+                filepath = os.path.join(Config.UPLOAD_FOLDER, filename)
+                img.save(filepath, 'PNG')
+                return success({'favicon': f'/uploads/{filename}'})
+            except Exception:
+                continue
+
+        # 全部失败，返回原始 URL 让前端自己显示
+        return success({'favicon': f'https://favicon.im/{domain}'})
 
     except Exception as e:
-        # 出错了也返回兜底地址
         from urllib.parse import urlparse
         domain = urlparse(url).netloc
-        return success({'favicon': f'https://{domain}/favicon.ico'})
+        return success({'favicon': f'https://favicon.im/{domain}'})

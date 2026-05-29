@@ -107,6 +107,7 @@
 import { ref, watch, onMounted, onUnmounted, nextTick } from 'vue'
 import { useUserStore } from '@/stores/user'
 import { gequhaiSearch, gequhaiUrl, gequhaiLyric, getPlaylist, addToPlaylist, removeFromPlaylist, refreshPlaylistUrl } from '@/api/music'
+import { getSettings, updateSettings } from '@/api/settings'
 import {
   audioEl, playlist, currentIndex, playing, progressPct,
   currentTime, duration, currentSong, volume, setLyrics
@@ -134,6 +135,21 @@ function cycleMode() {
   const idx = PLAY_MODES.indexOf(playMode.value)
   playMode.value = PLAY_MODES[(idx + 1) % PLAY_MODES.length]
   localStorage.setItem(musicKey('music_mode'), playMode.value)
+  syncMusicSetting('music_mode', playMode.value)
+}
+
+let musicSyncTimer = null
+function syncMusicSetting(key, val) {
+  clearTimeout(musicSyncTimer)
+  musicSyncTimer = setTimeout(() => {
+    getSettings().then(res => {
+      try {
+        const cfg = JSON.parse(res?.layout_config || '{}')
+        cfg[key] = val
+        updateSettings({ layout_config: JSON.stringify(cfg) })
+      } catch {}
+    }).catch(() => {})
+  }, 500)
 }
 
 let playingLock = false
@@ -339,11 +355,15 @@ function toggleMute() {
   if (volume.value > 0) { prevVol = volume.value; volume.value = 0; a.volume = 0 }
   else { volume.value = prevVol; a.volume = prevVol }
   volumeLocal.value = volume.value
+  localStorage.setItem(musicKey('music_volume'), String(volume.value))
+  syncMusicSetting('music_volume', String(volume.value))
 }
 function syncVolume() {
   const a = audioEl.value
   volume.value = volumeLocal.value
   if (a) a.volume = volume.value
+  localStorage.setItem(musicKey('music_volume'), String(volume.value))
+  syncMusicSetting('music_volume', String(volume.value))
 }
 
 // EQ 可视化

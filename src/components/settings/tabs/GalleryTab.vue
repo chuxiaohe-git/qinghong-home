@@ -56,14 +56,19 @@ async function load() {
   } catch {}
 }
 
+const ICON_SIZE = 150
+
 async function uploadFiles(e) {
   const files = e.target.files
   if (!files.length) return
   uploading.value = true
   try {
     for (const file of files) {
-      const type = file.type.startsWith('image/') ? 'wallpaper' : 'icon'
-      const res = await uploadImage(file, type)
+      // 根据当前选中的 tab 决定类型
+      const type = filter.value === 'icon' ? 'icon' : 'wallpaper'
+      // 图标类型：大图自动裁剪为正方形，小图保持原样
+      const uploadFile = (type === 'icon') ? await maybeResizeIcon(file) : file
+      const res = await uploadImage(uploadFile, type)
       images.value.unshift(res.data)
     }
   } catch (e) {
@@ -72,6 +77,34 @@ async function uploadFiles(e) {
     uploading.value = false
     e.target.value = ''
   }
+}
+
+/** 如果图片任一边 > ICON_SIZE，则居中裁剪为 ICON_SIZE×ICON_SIZE 正方形；否则原样返回 */
+function maybeResizeIcon(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => {
+      const { naturalWidth: w, naturalHeight: h } = img
+      // 小于等于目标尺寸，不处理
+      if (w <= ICON_SIZE && h <= ICON_SIZE) { resolve(file); return }
+      // 居中裁剪成正方形
+      const size = Math.min(w, h)
+      const sx = (w - size) / 2
+      const sy = (h - size) / 2
+      const canvas = document.createElement('canvas')
+      canvas.width = ICON_SIZE
+      canvas.height = ICON_SIZE
+      const ctx = canvas.getContext('2d')
+      ctx.drawImage(img, sx, sy, size, size, 0, 0, ICON_SIZE, ICON_SIZE)
+      canvas.toBlob((blob) => {
+        if (!blob) { resolve(file); return }
+        const resized = new File([blob], file.name, { type: 'image/png' })
+        resolve(resized)
+      }, 'image/png')
+    }
+    img.onerror = () => resolve(file)
+    img.src = URL.createObjectURL(file)
+  })
 }
 
 async function remove(img) {

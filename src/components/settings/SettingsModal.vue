@@ -130,6 +130,8 @@ const currentTab = computed(() => tabs.find(t => t.key === activeTab.value))
   align-items: center;
   justify-content: space-between;
   padding: 20px 24px 0;
+  position: relative;
+  z-index: 5;
 }
 .settings-header h2 {
   font-size: 18px;
@@ -145,6 +147,10 @@ const currentTab = computed(() => tabs.find(t => t.key === activeTab.value))
   border-radius: 8px;
   color: var(--text2);
   transition: all 0.2s;
+  z-index: 10;
+  position: relative;
+  cursor: pointer;
+  flex-shrink: 0;
 }
 .close-btn:hover {
   background: rgba(255,255,255,0.1);

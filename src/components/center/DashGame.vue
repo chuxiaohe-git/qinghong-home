@@ -227,7 +227,16 @@ onMounted(() => {
       if (cfg.game_name) { S.name = cfg.game_name; const inp = document.getElementById('geNameInput'); if (inp) inp.value = cfg.game_name; const nm = document.getElementById('geNameplate'); if (nm) nm.textContent = cfg.game_name }
     } catch {}
   }).catch(() => {})
-  function saveGame() { try { localStorage.setItem(GAME_KEY, JSON.stringify({ hits: S.hits, name: S.name })) } catch {} }
+  function saveGame() {
+    try { localStorage.setItem(GAME_KEY, JSON.stringify({ hits: S.hits, name: S.name })) } catch {}
+    try {
+      getSettings().then(res => {
+        const cfg = JSON.parse(res?.layout_config || '{}')
+        cfg.game_hits = S.hits
+        updateSettings({ layout_config: JSON.stringify(cfg) })
+      }).catch(() => {})
+    } catch {}
+  }
   let currentBossKey = ''
   let lastAngle = -999, lastTiltZ = -999, lastGx = -999, lastLoy = -999, lastRoy = -999, lastLox = -999, lastRox = -999
   let lastT = 0

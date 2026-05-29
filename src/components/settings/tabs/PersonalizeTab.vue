@@ -85,6 +85,21 @@
     </template>
 
     <div class="section-divider"></div>
+
+    <h3 class="section-title">功能卡片</h3>
+    <p class="hint">控制首页顶部各功能卡片的显示与隐藏</p>
+
+    <div class="card-toggle-grid">
+      <label v-for="card in CARD_OPTIONS" :key="card.key"
+        class="card-toggle-chip" :class="{ off: hiddenCards.includes(card.key) }">
+        <input type="checkbox" :checked="!hiddenCards.includes(card.key)"
+          @change="toggleCard(card.key)" />
+        <span class="chip-icon">{{ card.icon }}</span>
+        <span>{{ card.label }}</span>
+      </label>
+    </div>
+
+    <div class="section-divider"></div>
     <button class="btn-primary" :disabled="saving" @click="save">
       {{ saving ? '保存中...' : '保存设置' }}
     </button>
@@ -93,7 +108,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { getSettings, updateSettings } from '@/api/settings'
 import { getGallery, uploadImage } from '@/api/gallery'
 
@@ -101,6 +116,14 @@ const currentTheme = computed(() =>
   document.documentElement.classList.contains('light-theme') ? 'light' : 'dark'
 )
 
+const CARD_OPTIONS = [
+  { key: 'quote', icon: '💬', label: '一言' },
+  { key: 'clock', icon: '🕐', label: '时钟' },
+  { key: 'game', icon: '🎮', label: '游戏' },
+  { key: 'music', icon: '🎵', label: '音乐' },
+  { key: 'food', icon: '🃏', label: '抽卡' },
+  { key: 'websearch', icon: '🔍', label: '网络搜索' },
+]
 const bgColorDark = ref('#1a1a2e')
 const bgColorLight = ref('#eef2ff')
 const currentBgColor = computed(() => currentTheme.value === 'dark' ? bgColorDark.value : bgColorLight.value)
@@ -114,6 +137,7 @@ const uploading = ref(false)
 const saving = ref(false)
 const msg = ref('')
 const uploadInput = ref(null)
+const hiddenCards = ref([])
 
 function getImgUrl(img) {
   return img.url || `/uploads/${img.filename}`
@@ -171,6 +195,15 @@ function deselectAll() {
   selectedIds.value = []
 }
 
+function toggleCard(key) {
+  const idx = hiddenCards.value.indexOf(key)
+  if (idx >= 0) {
+    hiddenCards.value.splice(idx, 1)
+  } else {
+    hiddenCards.value.push(key)
+  }
+}
+
 async function load() {
   try {
     const [res, galleryRes] = await Promise.all([
@@ -185,8 +218,12 @@ async function load() {
         bgColorLight.value = parsed.bgColorLight || '#eef2ff'
         cardTransparency.value = parsed.cardTransparency ?? 0
         selectedIds.value = parsed.wallpaperIds || []
-        carouselEnabled.value = parsed.carouselEnabled || false
-        interval.value = parsed.interval || 1
+      carouselEnabled.value = parsed.carouselEnabled || false
+      interval.value = parsed.interval || 1
+      // 恢复隐藏卡片状态
+      if (parsed.hidden_cards && Array.isArray(parsed.hidden_cards)) {
+        hiddenCards.value = parsed.hidden_cards
+      }
         // 应用卡片透明度
         applyCardTransparency(cardTransparency.value)
       } catch {}
@@ -211,11 +248,16 @@ async function save() {
         wallpaperIds: selectedIds.value,
         carouselEnabled: carouselEnabled.value,
         interval: interval.value,
+        hidden_cards: [...hiddenCards.value],
       }),
     })
     msg.value = '保存成功'
     // 应用卡片透明度
     applyCardTransparency(cardTransparency.value)
+    // 通知主页同步隐藏状态
+    window.dispatchEvent(new CustomEvent('dashboard-cards-changed', {
+      detail: { hiddenCards: [...hiddenCards.value] }
+    }))
     // 触发全局背景更新，传当前模式
     const theme = currentTheme.value
     window.dispatchEvent(new CustomEvent('bg-update', {
@@ -245,6 +287,18 @@ function applyCardTransparency(transparency) {
 }
 
 onMounted(load)
+
+// 监听主页卡片关闭事件（用户在首页点了×）— 用命名函数确保能正确移除
+function onDashboardCardsChanged(e) {
+  if (e.detail && Array.isArray(e.detail.hiddenCards)) {
+    hiddenCards.value = e.detail.hiddenCards
+  }
+}
+window.addEventListener('dashboard-cards-changed', onDashboardCardsChanged)
+
+onBeforeUnmount(() => {
+  window.removeEventListener('dashboard-cards-changed', onDashboardCardsChanged)
+})
 </script>
 
 <style scoped>
@@ -358,4 +412,33 @@ onMounted(load)
 .btn-primary { padding: 8px 20px; background: var(--primary); border: none; border-radius: 8px; color: white; font-size: 14px; font-weight: 600; cursor: pointer; }
 .btn-primary:disabled { opacity: 0.6; }
 .msg { margin-top: 12px; font-size: 13px; color: var(--accent); }
+/* 功能卡片 — 紧凑并排 */
+.card-toggle-grid {
+  display: flex; flex-wrap: wrap; gap: 8px;
+}
+.card-toggle-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 5px 10px; border-radius: 20px;
+  background: var(--bg-glass); border: 1px solid var(--border);
+  cursor: pointer; transition: opacity 0.15s, border-color 0.15s, background 0.15s;
+  font-size: 13px; color: var(--text2); user-select: none;
+}
+.card-toggle-chip:hover { border-color: rgba(128,128,128,0.35); }
+.card-toggle-chip.off { opacity: 0.45; text-decoration: line-through; }
+.card-toggle-chip input[type="checkbox"] {
+  appearance: none; -webkit-appearance: none;
+  width: 16px; height: 16px; border-radius: 4px;
+  border: 1.5px solid var(--border); background: transparent;
+  cursor: pointer; position: relative; flex-shrink: 0;
+  transition: all 0.15s;
+}
+.card-toggle-chip input[type="checkbox"]:checked {
+  background: var(--primary); border-color: var(--primary);
+}
+.card-toggle-chip input[type="checkbox"]:checked::after {
+  content: ''; position: absolute; top: 1.5px; left: 4.5px;
+  width: 4px; height: 8px; border: solid white; border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.chip-icon { font-size: 14px; line-height: 1; }
 </style>

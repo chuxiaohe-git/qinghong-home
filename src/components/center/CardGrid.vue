@@ -136,10 +136,19 @@
           <div class="field"><label>链接</label><input v-model="form.url" class="input" placeholder="https://" /></div>
           <div class="field"><label>描述</label><textarea v-model="form.description" class="input textarea" placeholder="选填" rows="3"></textarea></div>
           <div class="field"><label>图标</label>
-            <div class="icon-field-row">
-              <input v-model="form.icon" class="input" placeholder="选填，图标链接" />
-              <button class="btn-sm" @click="fetchFavicon" :disabled="!form.url" title="从网址获取网站图标">🌐 获取</button>
-              <button class="btn-sm" @click="showIconPicker = true" title="从图标库选择">🎨 图标库</button>
+            <div class="icon-field-container">
+              <div class="icon-preview-box" :class="{ 'has-icon': form.icon }" @click="form.icon = ''" title="点击清除图标">
+                <img v-if="form.icon" :src="form.icon" alt="" />
+                <span v-else class="icon-placeholder">📷</span>
+              </div>
+              <div class="icon-right-col">
+                <input v-model="form.icon" class="input icon-url-input" placeholder="选填，图标链接" />
+                <div class="icon-btn-row">
+                  <button class="btn-sm" @click="fetchFavicon" :disabled="!form.url" title="从网址获取网站图标">🌐 获取</button>
+                  <button class="btn-sm" @click="showIconPicker = true" title="从图标库选择">🎨 图标库</button>
+                  <button class="btn-sm" @click="openGalleryPicker" title="从本地图库选择">📂 本地图库</button>
+                </div>
+              </div>
             </div>
             <!-- 图标来源选择浮层 -->
             <div v-if="showIconPicker" class="icon-picker-overlay" @click.self="showIconPicker = false">
@@ -157,6 +166,46 @@
                     <span class="picker-name">彩色图标</span>
                     <span class="picker-desc">来自 IconArchive · 多彩精美图标</span>
                   </div>
+                </div>
+              </div>
+            </div>
+            <!-- 本地图库选择浮层 -->
+            <div v-if="showGalleryPicker" class="gallery-picker-overlay" @click.self="showGalleryPicker = false">
+              <div class="gallery-picker-card"
+                @dragover.prevent
+                @dragenter.prevent="galleryDragOver = true"
+                @dragleave.prevent="galleryDragOver = false"
+                @drop.prevent="onGalleryDrop($event)"
+              >
+                <div class="gallery-picker-header">
+                  <span>本地图库 · 选择图标</span>
+                  <div style="display:flex;gap:8px;align-items:center;">
+                    <button class="btn-sm btn-primary" @click="$refs.galleryUploadInput?.click()" :disabled="galleryUploading">
+                      {{ galleryUploading ? '上传中...' : '➕ 上传图标' }}
+                    </button>
+                    <input ref="galleryUploadInput" type="file" accept="image/*" multiple hidden @change="handleGalleryUpload" />
+                    <button class="btn-sm" @click="showGalleryPicker = false">✕ 关闭</button>
+                  </div>
+                </div>
+                <!-- 上传区域（空状态或拖拽提示） -->
+                <div v-if="galleryDragOver" class="gallery-upload-zone drag-active" @drop.prevent>
+                  释放以上传
+                </div>
+                <div v-if="galleryLoading" class="gallery-loading">加载中...</div>
+                <div v-else-if="!galleryImages.length && !galleryUploading" class="gallery-empty">
+                  图库暂无图标<br><small style="opacity:0.6;">点击「上传图标」添加，或从设置 → 图库管理</small>
+                </div>
+                <div v-else class="gallery-grid">
+                  <button
+                    v-for="(img, idx) in galleryImages"
+                    :key="img.id"
+                    class="gallery-thumb"
+                    :class="{ active: form.icon === getUrl(img) }"
+                    :title="img.original_name || img.filename"
+                    @click="pickGalleryIcon(img)"
+                  >
+                    <img :src="getUrl(img)" alt="" loading="lazy" />
+                  </button>
                 </div>
               </div>
             </div>
@@ -216,6 +265,7 @@ import { useUserStore } from '@/stores/user'
 import { getBookmarks, createBookmark, updateBookmark, deleteBookmark as apiDelete, reorderBookmarks } from '@/api/bookmarks'
 import { updateGroup } from '@/api/groups'
 import { pinyin } from 'pinyin-pro'
+import { getGallery, uploadImage } from '@/api/gallery'
 
 const props = defineProps({
   search: { type: String, default: '' },
@@ -265,6 +315,13 @@ const matchingIcon = ref(false)
 const iconMatchMsg = ref('')
 const showIconPicker = ref(false)
 const iconSource = ref('vector') // 'vector' | 'color'
+
+// 本地图库选择
+const showGalleryPicker = ref(false)
+const galleryImages = ref([])
+const galleryLoading = ref(false)
+const galleryUploading = ref(false)
+const galleryDragOver = ref(false)
 
 // 从 URL 提取域名并获取网站图标
 async function fetchFavicon() {
@@ -357,6 +414,76 @@ function pickIconSource(source) {
 function refreshIcons() {
   if (iconSource.value === 'vector') fetchVectorIcons()
   else fetchColorIcons()
+}
+
+// 本地图库
+function getUrl(img) {
+  return img.url || `/uploads/${img.filename}`
+}
+async function openGalleryPicker() {
+  showGalleryPicker.value = true
+  galleryLoading.value = true
+  galleryImages.value = []
+  try {
+    const res = await getGallery('icon')
+    galleryImages.value = (res.data || []).filter(i => i.image_type === 'icon')
+  } catch {}
+  galleryLoading.value = false
+}
+function pickGalleryIcon(img) {
+  form.value.icon = getUrl(img)
+  showGalleryPicker.value = false
+}
+
+const ICON_SIZE = 150
+
+/** 图标上传：大图裁剪为正方形，小图保持原样 */
+function maybeResizeIcon(file) {
+  return new Promise((resolve) => {
+    const img = new Image()
+    img.onload = () => {
+      const { naturalWidth: w, naturalHeight: h } = img
+      if (w <= ICON_SIZE && h <= ICON_SIZE) { resolve(file); return }
+      const size = Math.min(w, h)
+      const sx = (w - size) / 2
+      const sy = (h - size) / 2
+      const canvas = document.createElement('canvas')
+      canvas.width = ICON_SIZE
+      canvas.height = ICON_SIZE
+      const ctx = canvas.getContext('2d')
+      ctx.drawImage(img, sx, sy, size, size, 0, 0, ICON_SIZE, ICON_SIZE)
+      canvas.toBlob((blob) => {
+        resolve(blob ? new File([blob], file.name, { type: 'image/png' }) : file)
+      }, 'image/png')
+    }
+    img.onerror = () => resolve(file)
+    img.src = URL.createObjectURL(file)
+  })
+}
+
+async function handleGalleryUpload(e) {
+  await doGalleryUpload(e.target.files)
+}
+async function onGalleryDrop(e) {
+  galleryDragOver.value = false
+  await doGalleryUpload(e.dataTransfer?.files)
+}
+async function doGalleryUpload(fileList) {
+  if (!fileList?.length) return
+  galleryUploading.value = true
+  try {
+    for (const file of fileList) {
+      const resized = await maybeResizeIcon(file)
+      const res = await uploadImage(resized, 'icon')
+      // 插到列表最前面并自动选中
+      galleryImages.value.unshift(res.data)
+      form.value.icon = getUrl(res.data)
+    }
+  } catch (e) {
+    alert('上传失败：' + e.message)
+  } finally {
+    galleryUploading.value = false
+  }
 }
 
 // 计算每个分组的卡片（支持搜索过滤，含拼音/首拼匹配）
@@ -919,7 +1046,7 @@ onUnmounted(() => {
   text-decoration: none;
 }
 .icon-sm {
-  width: 32px; height: 32px; border-radius: 8px;
+  width: 50px; height: 50px; border-radius: 10px;
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
   font-size: 16px; font-weight: 700; color: white;
@@ -1083,13 +1210,26 @@ select.input { cursor: pointer; }
 .btn-cancel:hover { background: var(--bg-glass); }
 
 /* ====== 图标工具 ====== */
-.icon-field-row {
+.icon-field-container {
   display: flex;
-  gap: 8px;
+  gap: 12px;
+  align-items: stretch;
 }
-.icon-field-row .input {
-  flex: 1;
+.icon-preview-box {
+  width: 64px; height: 64px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px dashed var(--border); border-radius: 10px;
+  background: var(--bg-input); cursor: pointer;
+  overflow: hidden; transition: all 0.15s;
 }
+.icon-preview-box:hover { border-color: var(--primary); }
+.icon-preview-box img { width: 100%; height: 100%; object-fit: contain; padding: 4px; box-sizing: border-box; }
+.icon-placeholder { font-size: 22px; opacity: 0.35; }
+.icon-right-col {
+  flex: 1; display: flex; flex-direction: column; gap: 8px;
+}
+.icon-url-input { flex: 1; }
+.icon-btn-row { display: flex; gap: 8px; }
 .btn-sm {
   padding: 0 12px;
   height: 36px;
@@ -1239,6 +1379,82 @@ select.input { cursor: pointer; }
 .picker-desc {
   font-size: 12px;
   color: var(--text3);
+}
+
+/* ====== 本地图库选择浮层 ====== */
+.gallery-picker-overlay {
+  position: fixed; inset: 0; z-index: 1001;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(8px);
+  display: flex; align-items: center; justify-content: center;
+}
+.gallery-picker-card {
+  width: 580px; max-height: 78vh;
+  display: flex; flex-direction: column; gap: 14px;
+  background: var(--bg-modal); border: 1px solid var(--border);
+  border-radius: 16px; padding: 20px;
+  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.35), 0 0 1px rgba(255,255,255,0.08) inset;
+  overflow-y: auto;
+}
+.gallery-picker-header {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 15px; font-weight: 600; color: var(--text);
+}
+.gallery-loading, .gallery-empty {
+  text-align: center; padding: 36px 0; color: var(--text3); font-size: 13px;
+}
+.gallery-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 10px;
+}
+.gallery-thumb {
+  aspect-ratio: 1;
+  display: flex; align-items: center; justify-content: center;
+  border: 2px solid transparent; border-radius: 10px;
+  background: var(--bg-glass); cursor: pointer; overflow: hidden;
+  padding: 6px; box-sizing: border-box; transition: all 0.15s ease;
+  position: relative;
+}
+.gallery-thumb::after {
+  content: ''; position: absolute; inset: 0;
+  border-radius: 8px;
+  transition: all 0.15s ease;
+}
+.gallery-thumb:hover { border-color: rgba(255,255,255,0.2); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+.gallery-thumb:hover::after { background: rgba(255,255,255,0.05); }
+.gallery-thumb.active {
+  border-color: var(--primary);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--primary) 35%, transparent), 0 4px 12px rgba(0,0,0,0.15);
+}
+.gallery-thumb img { width: 100%; height: 100%; object-fit: contain; }
+
+/* 图库上传区域 */
+.gallery-upload-zone {
+  border: 2px dashed var(--border);
+  border-radius: 12px;
+  padding: 24px;
+  text-align: center;
+  color: var(--text3);
+  font-size: 14px;
+  background: rgba(128, 128, 128, 0.05);
+  transition: all 0.2s ease;
+}
+.gallery-upload-zone.drag-active {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  color: var(--primary);
+  font-weight: 600;
+}
+.btn-primary {
+  background: var(--primary) !important;
+  color: #fff !important;
+  border-color: var(--primary) !important;
+}
+.btn-primary:hover:not(:disabled) {
+  opacity: 0.9;
+}
+.btn-primary:disabled {
+  opacity: 0.5; cursor: not-allowed;
 }
 
 @media (max-width: 768px) {

@@ -142,13 +142,22 @@
         <div class="right-body">
           <!-- 右侧：所有内容一起滚动 -->
           <main class="main">
+            <!-- 网络搜索（仅 bookmarks 视图显示） -->
+            <WebSearch
+              v-if="activeView === 'bookmarks'"
+              :visible="!isCardHidden('websearch')"
+              :initialEngines="searchEngines"
+              @engines-change="onSearchEnginesChange"
+            />
+
             <!-- 仪表板（可拖拽排序） -->
             <div v-if="!store.isGuest" class="dashboard" :style="activeView !== 'bookmarks' ? 'display:none' : ''"
               @dragover.prevent="onDragOver" @drop="onDrop">
-            <div class="dash-card dash-quote" data-card="quote" :style="{ order: cardIdx('quote') }"
+            <div v-if="!isCardHidden('quote')" class="dash-card dash-quote" data-card="quote" :style="{ order: cardIdx('quote') }"
               @contextmenu.prevent="openQuoteMenu">
               <div class="drag-grip" draggable="true"
                 @dragstart="onDragStart($event, 'quote')" @dragend="onDragEnd">⠿</div>
+              <button class="dash-close-btn" title="隐藏此卡片" @click.stop="hideCard('quote')">×</button>
               <div class="quote-text">{{ quoteText }}</div>
                 <div class="quote-from" v-if="quoteFrom">—— {{ quoteFrom }}</div>
               </div>
@@ -157,25 +166,34 @@
               <button class="ctx-item-fixed" @click="doRefreshQuote">🔄 换一句</button>
               <button class="ctx-item-fixed" @click="doToggleAuto">{{ quoteAuto ? '⏹ 停止自动' : '▶️ 自动播放' }}</button>
             </div>
-              <div class="dash-card" data-card="clock" :style="{ order: cardIdx('clock') }"
+              <div v-if="!isCardHidden('clock')" class="dash-card" data-card="clock" :style="{ order: cardIdx('clock') }"
                 >
                 <div class="drag-grip" draggable="true"
-                  @dragstart="onDragStart($event, 'clock')" @dragend="onDragEnd">⠿</div><DashClock @ctxopen="closeQuoteMenu" />
+                  @dragstart="onDragStart($event, 'clock')" @dragend="onDragEnd">⠿</div>
+                <button class="dash-close-btn" title="隐藏此卡片" @click.stop="hideCard('clock')">×</button>
+                <DashClock @ctxopen="closeQuoteMenu" />
               </div>
-              <div class="dash-card" data-card="game" :style="{ order: cardIdx('game') }"
+              <div v-if="!isCardHidden('game')" class="dash-card" data-card="game" :style="{ order: cardIdx('game') }"
                 >
                 <div class="drag-grip" draggable="true"
-                  @dragstart="onDragStart($event, 'game')" @dragend="onDragEnd">⠿</div><DashGame />
+                  @dragstart="onDragStart($event, 'game')" @dragend="onDragEnd">⠿</div>
+                <button class="dash-close-btn" title="隐藏此卡片"
+                  @mousedown.stop.prevent @touchstart.stop.prevent @click.stop="hideCard('game')">×</button>
+                <DashGame />
               </div>
-              <div class="dash-card" data-card="music" :style="{ order: cardIdx('music') }"
+              <div v-if="!isCardHidden('music')" class="dash-card" data-card="music" :style="{ order: cardIdx('music') }"
                 >
                 <div class="drag-grip" draggable="true"
-                  @dragstart="onDragStart($event, 'music')" @dragend="onDragEnd">⠿</div><DashMusic />
+                  @dragstart="onDragStart($event, 'music')" @dragend="onDragEnd">⠿</div>
+                <button class="dash-close-btn" title="隐藏此卡片" @click.stop="hideCard('music')">×</button>
+                <DashMusic />
               </div>
-              <div class="dash-card" data-card="food" :style="{ order: cardIdx('food') }"
+              <div v-if="!isCardHidden('food')" class="dash-card" data-card="food" :style="{ order: cardIdx('food') }"
                 >
                 <div class="drag-grip" draggable="true"
-                  @dragstart="onDragStart($event, 'food')" @dragend="onDragEnd">⠿</div><DashFood />
+                  @dragstart="onDragStart($event, 'food')" @dragend="onDragEnd">⠿</div>
+                <button class="dash-close-btn" title="隐藏此卡片" @click.stop="hideCard('food')">×</button>
+                <DashFood />
               </div>
             </div>
             <!-- 收藏内容 -->
@@ -260,6 +278,7 @@ import { getTodos } from '@/api/todo'
 import GroupSidebar from '@/components/sidebar/GroupSidebar.vue'
 import SearchBar from '@/components/center/SearchBar.vue'
 import CardGrid from '@/components/center/CardGrid.vue'
+import WebSearch from '@/components/center/WebSearch.vue'
 import NotesView from '@/components/center/NotesView.vue'
 import CalendarView from '@/components/calendar/CalendarView.vue'
 import MobileCalendarView from '@/components/calendar/MobileCalendarView.vue'
@@ -347,12 +366,46 @@ const activeView = ref('bookmarks')
 // 仪表板卡片拖拽排序
 const DEFAULT_CARD_ORDER = ['quote', 'clock', 'game', 'music', 'food']
 const cardOrder = ref([...DEFAULT_CARD_ORDER])
+// 卡片隐藏状态（存的是被隐藏的卡片名数组，空=全显示）
+const hiddenCards = ref(JSON.parse(localStorage.getItem('dash_hidden_cards') || '[]'))
+// 网络搜索引擎列表
+const searchEngines = ref([])
 let dragCard = null
 
 function cardIdx(name) { return cardOrder.value.indexOf(name) }
+function isCardHidden(name) { return hiddenCards.value.includes(name) }
+function hideCard(name) {
+  if (!hiddenCards.value.includes(name)) {
+    hiddenCards.value.push(name)
+    saveHiddenCards()
+  }
+}
+function showCard(name) {
+  const idx = hiddenCards.value.indexOf(name)
+  if (idx >= 0) {
+    hiddenCards.value.splice(idx, 1)
+    saveHiddenCards()
+  }
+}
+function saveHiddenCards() {
+  localStorage.setItem('dash_hidden_cards', JSON.stringify(hiddenCards.value))
+  updateSettings({
+    layout_config: JSON.stringify({ ...bgConfig.value, card_order: cardOrder.value, hidden_cards: [...hiddenCards.value], search_engines: [...searchEngines.value] })
+  }).catch(() => {})
+  // 通知设置面板同步
+  window.dispatchEvent(new CustomEvent('dashboard-cards-changed', { detail: { hiddenCards: [...hiddenCards.value] } }))
+}
+// 搜索引擎变更（用户添加/删除了引擎）
+function onSearchEnginesChange(engines) {
+  searchEngines.value = engines
+  // 立即持久化
+  updateSettings({
+    layout_config: JSON.stringify({ ...bgConfig.value, card_order: cardOrder.value, hidden_cards: [...hiddenCards.value], search_engines: engines })
+  }).catch(() => {})
+}
 function saveCardOrder() {
   // 保存到后端
-  updateSettings({ layout_config: JSON.stringify({ ...bgConfig.value, card_order: cardOrder.value }) }).catch(() => {})
+  updateSettings({ layout_config: JSON.stringify({ ...bgConfig.value, card_order: cardOrder.value, hidden_cards: [...hiddenCards.value], search_engines: [...searchEngines.value] }) }).catch(() => {})
 }
 function onDragStart(e, name) {
   dragCard = name; e.target.closest('.dash-card')?.classList.add('dragging')
@@ -487,6 +540,15 @@ async function loadBgConfig() {
       if (parsed.card_order && Array.isArray(parsed.card_order) && parsed.card_order.length === DEFAULT_CARD_ORDER.length) {
         cardOrder.value = parsed.card_order
       }
+      // 从数据库恢复隐藏卡片状态
+      if (parsed.hidden_cards && Array.isArray(parsed.hidden_cards)) {
+        hiddenCards.value = parsed.hidden_cards
+        localStorage.setItem('dash_hidden_cards', JSON.stringify(parsed.hidden_cards))
+      }
+      // 从数据库恢复搜索引擎列表
+      if (parsed.search_engines && Array.isArray(parsed.search_engines) && parsed.search_engines.length > 0) {
+        searchEngines.value = parsed.search_engines
+      }
       return
     }
   } catch {}
@@ -618,6 +680,7 @@ function toggleTheme() {
   isLight.value = document.documentElement.classList.contains('light-theme')
   showUserMenu.value = false
   localStorage.setItem('theme', isLight.value ? 'light' : 'dark')
+  updateSettings({ theme: isLight.value ? 'light' : 'dark' }).catch(() => {})
   // 主题切换后重新应用背景颜色
   if (bgConfig.value) applyBg(bgConfig.value)
 }
@@ -708,6 +771,11 @@ onMounted(async () => {
     fetchQuote()
   }
   window.addEventListener('bg-update', handleBgUpdate)
+  window.addEventListener('dashboard-cards-changed', (e) => {
+    if (e.detail && Array.isArray(e.detail.hiddenCards)) {
+      hiddenCards.value = e.detail.hiddenCards
+    }
+  })
   document.addEventListener('click', closeMenu)
   // AI 操作完成后刷新待办和收藏
   window.addEventListener('ai-action-done', onAiActionDone)
@@ -717,6 +785,7 @@ onUnmounted(() => {
   stopCarousel()
   if (quoteTimer) clearInterval(quoteTimer)
   window.removeEventListener('bg-update', handleBgUpdate)
+  window.removeEventListener('dashboard-cards-changed')
   document.removeEventListener('click', closeMenu)
   window.removeEventListener('ai-action-done', onAiActionDone)
 })
@@ -818,6 +887,18 @@ onUnmounted(() => {
   cursor: default;
 }
 .dash-card.dragging { opacity: 0.4; transform: scale(0.95); }
+/* 卡片关闭按钮 */
+.dash-close-btn {
+  position: absolute; top: 4px; right: 4px;
+  width: 20px; height: 20px; border: none; border-radius: 50%;
+  background: rgba(128,128,128,0.2); color: var(--text3);
+  font-size: 14px; line-height: 1; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity 0.15s, background 0.15s;
+  z-index: 50;
+}
+.dash-card:hover .dash-close-btn { opacity: 1; }
+.dash-close-btn:hover { background: rgba(255,80,80,0.3); color: #ff6b6b; }
 /* 拖拽手柄 */
 .drag-grip {
   position: absolute; top: 2px; left: 50%; transform: translateX(-50%);
