@@ -4,6 +4,7 @@ from flask import Blueprint, request, send_from_directory
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from extensions import db
 from models.gallery import GalleryImage
+from models.bookmark import Bookmark
 from config import Config
 from utils.response import success, error
 from werkzeug.utils import secure_filename
@@ -114,3 +115,66 @@ def serve_image_file(image_id):
     if os.path.exists(img.filepath):
         return send_from_directory(Config.UPLOAD_FOLDER, img.filename)
     return error('文件不存在', 404)
+
+
+@gallery_bp.route('/cleanup-unused', methods=['POST'])
+@jwt_required()
+def cleanup_unused_icons():
+    """一键删除当前用户未被任何书签引用的图标（type=icon）"""
+    user_id = int(get_jwt_identity())
+
+    try:
+        # 1. 获取用户所有 icon 类型的图库记录
+        icon_images = GalleryImage.query.filter_by(user_id=user_id, image_type='icon').all()
+        if not icon_images:
+            return success({'deleted': 0}, '没有需要清理的图标')
+
+        # 2. 获取用户所有书签的 icon 字段值集合
+        user_bookmarks = Bookmark.query.filter_by(user_id=user_id).all()
+        used_icon_paths = set()
+        for bm in user_bookmarks:
+            if bm.icon and bm.icon.strip():
+                used_icon_paths.add(bm.icon.strip())
+                # 同时支持 /uploads/filename 和纯 filename 格式
+                if bm.icon.startswith('/uploads/'):
+                    used_icon_paths.add(bm.icon[len('/uploads/'):])
+
+        # 3. 筛出未被引用的图标
+        deleted_count = 0
+        deleted_files = []
+        for img in icon_images:
+            # 判断该图标是否被任何书签引用
+            is_used = False
+            possible_refs = [
+                f'/uploads/{img.filename}',
+                img.filename,
+            ]
+            for ref in possible_refs:
+                if ref in used_icon_paths:
+                    is_used = True
+                    break
+
+            if not is_used:
+                # 删除物理文件
+                if os.path.exists(img.filepath):
+                    try:
+                        os.remove(img.filepath)
+                        deleted_files.append(img.filename)
+                    except Exception as fe:
+                        logger.warning(f"[gallery] 删除文件失败: {img.filepath} - {fe}")
+                # 删除数据库记录
+                db.session.delete(img)
+                deleted_count += 1
+
+        db.session.commit()
+
+        logger.info(f"[gallery] 清理未使用图标: 用户{user_id} 删除了 {deleted_count} 个")
+        return success({
+            'deleted': deleted_count,
+            'files': deleted_files,
+        }, f'已清理 {deleted_count} 个未使用的图标')
+
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"[gallery] 清理失败: {e}")
+        return error(f'清理失败: {str(e)}', status=500)

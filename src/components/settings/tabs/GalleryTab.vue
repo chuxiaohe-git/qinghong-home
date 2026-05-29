@@ -6,13 +6,24 @@
         <button :class="{ active: filter === 'wallpaper' }" @click="filter = 'wallpaper'">壁纸</button>
         <button :class="{ active: filter === 'icon' }" @click="filter = 'icon'">图标</button>
       </div>
-      <label class="upload-btn">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
-        </svg>
-        上传
-        <input type="file" accept="image/*" multiple @change="uploadFiles" hidden />
-      </label>
+      <div class="toolbar-actions">
+        <button
+          v-if="filter === 'icon'"
+          class="cleanup-btn"
+          :disabled="cleaning"
+          @click="cleanupUnused"
+          title="删除所有未被书签使用的图标"
+        >
+          {{ cleaning ? '清理中...' : '🗑️ 清理未使用' }}
+        </button>
+        <label class="upload-btn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          上传
+          <input type="file" accept="image/*" multiple @change="uploadFiles" hidden />
+        </label>
+      </div>
     </div>
 
     <div v-if="uploading" class="uploading">上传中...</div>
@@ -34,11 +45,12 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { getGallery, uploadImage, deleteImage } from '@/api/gallery'
+import { getGallery, uploadImage, deleteImage, cleanupUnusedIcons } from '@/api/gallery'
 
 const filter = ref('all')
 const images = ref([])
 const uploading = ref(false)
+const cleaning = ref(false)
 
 const filteredList = computed(() => {
   if (filter.value === 'all') return images.value
@@ -117,12 +129,47 @@ async function remove(img) {
   }
 }
 
+/** 一键清理未被任何书签引用的图标 */
+async function cleanupUnused() {
+  const iconCount = images.value.filter(i => i.image_type === 'icon').length
+  if (!iconCount) {
+    alert('没有需要清理的图标')
+    return
+  }
+  if (!confirm(`将删除所有未被书签使用的图标文件（共 ${iconCount} 个图标），确定继续？`)) return
+  cleaning.value = true
+  try {
+    const res = await cleanupUnusedIcons()
+    alert(res.message || `清理完成`)
+    // 刷新列表
+    await load()
+  } catch (e) {
+    alert('清理失败：' + e.message)
+  } finally {
+    cleaning.value = false
+  }
+}
+
 onMounted(load)
 </script>
 
 <style scoped>
 .tab-content { max-width: 100%; }
 .toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.toolbar-actions { display: flex; align-items: center; gap: 8px; }
+.cleanup-btn {
+  padding: 6px 14px;
+  background: rgba(255,107,107,0.12);
+  border: 1px solid rgba(255,107,107,0.3);
+  border-radius: 8px;
+  color: #ff6b6b;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.cleanup-btn:hover:not(:disabled) { background: rgba(255,107,107,0.2); border-color: rgba(255,107,107,0.5); }
+.cleanup-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .tabs { display: flex; gap: 4px; }
 .tabs button {
   padding: 6px 14px; background: var(--bg-glass); border: 1px solid var(--border);

@@ -14,3 +14,6 @@ export const uploadImage = (file, type = 'wallpaper') => {
 
 export const deleteImage = (id) =>
   request.delete(`/gallery/${id}`)
+
+export const cleanupUnusedIcons = () =>
+  request.post('/gallery/cleanup-unused')

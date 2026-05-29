@@ -150,23 +150,63 @@
                 </div>
               </div>
             </div>
-            <!-- 图标来源选择浮层 -->
-            <div v-if="showIconPicker" class="icon-picker-overlay" @click.self="showIconPicker = false">
+            <!-- 图标库选择浮层（来源选择 + 搜索面板） -->
+            <div v-if="showIconPicker || iconSearchActive" class="icon-picker-overlay" @click.self="closeIconPicker">
               <div class="icon-picker-card">
-                <div class="icon-picker-option" @click="pickIconSource('vector')">
-                  <div class="picker-icon">◇</div>
-                  <div class="picker-info">
-                    <span class="picker-name">纯色图标</span>
-                    <span class="picker-desc">来自 Iconify · 线性矢量图标</span>
+                <!-- 阶段1：选择来源（纯色/彩色） -->
+                <template v-if="!iconSearchActive">
+                  <div class="icon-picker-option" @click="pickIconSource('vector')">
+                    <div class="picker-icon">◇</div>
+                    <div class="picker-info">
+                      <span class="picker-name">纯色图标</span>
+                      <span class="picker-desc">来自 Iconify · 线性矢量图标</span>
+                    </div>
                   </div>
-                </div>
-                <div class="icon-picker-option" @click="pickIconSource('color')">
-                  <div class="picker-icon picker-icon-color">◆</div>
-                  <div class="picker-info">
-                    <span class="picker-name">彩色图标</span>
-                    <span class="picker-desc">来自 IconArchive · 多彩精美图标</span>
+                  <div class="icon-picker-option" @click="pickIconSource('color')">
+                    <div class="picker-icon picker-icon-color">◆</div>
+                    <div class="picker-info">
+                      <span class="picker-name">彩色图标</span>
+                      <span class="picker-desc">来自 IconArchive · 多彩精美图标</span>
+                    </div>
                   </div>
-                </div>
+                </template>
+
+                <!-- 阶段2：搜索 + 结果面板 -->
+                <template v-else>
+                  <div class="icon-panel-header">
+                    <span>{{ iconSource === 'vector' ? '纯色图标' : '彩色图标' }} — {{ iconSource === 'vector' ? 'Iconify' : 'IconArchive' }}</span>
+                    <button class="btn-sm btn-xs" @click="closeIconPicker" title="返回选择">✕ 关闭</button>
+                  </div>
+                  <div class="icon-search-bar" @keydown.enter.prevent="doIconSearch">
+                    <span class="icon-search-icon">🔍</span>
+                    <input
+                      v-model="iconSearchText"
+                      class="icon-search-input"
+                      :placeholder="'输入中文或英文关键词，回车搜索…'"
+                    />
+                    <button v-if="iconSearchText.trim()" class="btn-sm btn-xs icon-search-clear" @click="clearIconSearch" title="清除搜索">✕</button>
+                  </div>
+                  <div v-if="iconActualKeyword" class="icon-search-hint">搜索：{{ iconActualKeyword }}</div>
+                  <div class="icon-suggestions-header">
+                    <span class="icon-match-hint">{{ iconSuggestions.length ? iconSuggestions.length + ' 个' + (iconSource === 'color' ? '彩色' : '纯色') + '图标' : '' }}</span>
+                    <button v-if="!iconSearchText.trim()" class="btn-sm btn-xs" @click="refreshIcons" :disabled="matchingIcon" title="换一批">🔄 换一批</button>
+                    <button v-else class="btn-sm btn-xs" @click="doIconSearch" :disabled="matchingIcon || !iconSearchText.trim()" title="重新搜索">🔍 搜索</button>
+                  </div>
+                  <div v-if="matchingIcon && !iconSuggestions.length" class="icon-loading-hint">{{ iconMatchMsg || '搜索中…' }}</div>
+                  <div v-else-if="!iconSuggestions.length && iconSearched" class="icon-empty-hint">没有找到相关图标，换个关键词试试</div>
+                  <div class="icon-suggestions-grid">
+                    <button
+                      v-for="(ico, idx) in iconSuggestions"
+                      :key="ico.id || idx"
+                      class="icon-option"
+                      :class="{ active: form.icon === ico.url }"
+                      @click="form.icon = ico.url; closeIconPicker()"
+                      :title="ico.name"
+                    >
+                      <img :src="ico.thumbnail || ico.url" :alt="ico.name" width="20" height="20" loading="lazy" />
+                    </button>
+                  </div>
+                </template>
               </div>
             </div>
             <!-- 本地图库选择浮层 -->
@@ -209,27 +249,6 @@
                 </div>
               </div>
             </div>
-            <!-- 匹配结果提示 -->
-            <p v-if="iconMatchMsg && !iconSuggestions.length" class="icon-match-msg">{{ iconMatchMsg }}</p>
-            <!-- 智能匹配候选图标 -->
-            <div v-if="iconSuggestions.length" class="icon-suggestions">
-              <div class="icon-suggestions-header">
-                <span class="icon-match-hint">{{ iconSuggestions.length }} 个{{ iconSource === 'color' ? '彩色' : '纯色' }}图标</span>
-                <button class="btn-sm btn-xs" @click="refreshIcons" :disabled="matchingIcon" title="换一批">🔄 换一批</button>
-              </div>
-              <div class="icon-suggestions-grid">
-                <button
-                  v-for="(ico, idx) in iconSuggestions"
-                  :key="ico.id || idx"
-                  class="icon-option"
-                  :class="{ active: form.icon === ico.url }"
-                  @click="form.icon = ico.url; iconSuggestions = []; iconMatchMsg = ''"
-                  :title="ico.name"
-                >
-                  <img :src="ico.thumbnail || ico.url" :alt="ico.name" width="20" height="20" loading="lazy" />
-                </button>
-              </div>
-            </div>
           </div>
           <div class="field">
             <label>背景色</label>
@@ -262,6 +281,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useGroupStore } from '@/stores/groups'
 import { useUserStore } from '@/stores/user'
+import request from '@/utils/request'
 import { getBookmarks, createBookmark, updateBookmark, deleteBookmark as apiDelete, reorderBookmarks } from '@/api/bookmarks'
 import { updateGroup } from '@/api/groups'
 import { pinyin } from 'pinyin-pro'
@@ -316,6 +336,12 @@ const iconMatchMsg = ref('')
 const showIconPicker = ref(false)
 const iconSource = ref('vector') // 'vector' | 'color'
 
+// 图标搜索
+const iconSearchText = ref('')
+const iconSearchActive = ref(false)
+const iconActualKeyword = ref('')
+const iconSearched = ref(false)
+
 // 本地图库选择
 const showGalleryPicker = ref(false)
 const galleryImages = ref([])
@@ -323,15 +349,76 @@ const galleryLoading = ref(false)
 const galleryUploading = ref(false)
 const galleryDragOver = ref(false)
 
+// ====== 图标搜索 & 翻译 ======
+
+/** 检测文本是否包含中文字符 */
+function containsChinese(text) {
+  return /[\u4e00-\u9fa5]/.test(text)
+}
+
+/**
+ * 翻译中文为英文（MyMemory 免费 API）
+ * 英文原样返回，中文自动翻译
+ */
+async function translateText(text) {
+  const t = text.trim().toLowerCase()
+  if (!t) return ''
+  // 纯英文/数字 → 直接返回
+  if (!containsChinese(t)) return t
+  try {
+    const res = await fetch(`https://api.mymemory.translated.net/get?q=${encodeURIComponent(t)}&langpair=zh|en`)
+    const data = await res.json()
+    const translated = data?.responseData?.translatedText
+    // 如果翻译结果和原文一样（没翻译成功），降级为原文
+    if (translated && translated !== t) {
+      console.log(`[图标搜索] "${t}" → "${translated}"`)
+      return translated.toLowerCase()
+    }
+    return t
+  } catch (e) {
+    console.warn('[图标搜索] 翻译失败，使用原文:', e)
+    return t
+  }
+}
+
+/** 执行图标搜索：翻译 + 调用对应接口 */
+async function doIconSearch() {
+  const text = iconSearchText.value.trim()
+  iconSearched.value = true
+  if (!text) {
+    // 清空搜索时恢复随机模式
+    clearIconSearch()
+    return
+  }
+  iconActualKeyword.value = ''
+  const keyword = await translateText(text)
+  iconActualKeyword.value = keyword
+  iconSearchActive.value = true
+
+  if (iconSource.value === 'vector') {
+    await fetchVectorIcons(keyword)
+  } else {
+    await fetchColorIcons(keyword)
+  }
+}
+
+/** 清除搜索关键词，恢复随机模式 */
+function clearIconSearch() {
+  iconSearchText.value = ''
+  iconActualKeyword.value = ''
+  iconSearched.value = false
+  // 回到随机模式
+  refreshIcons()
+}
+
 // 从 URL 提取域名并获取网站图标
 async function fetchFavicon() {
   if (!form.value.url) return
   try {
     let urlStr = form.value.url.trim()
     if (!/^https?:\/\//i.test(urlStr)) urlStr = 'https://' + urlStr
-    const res = await fetch(`/api/scrape/favicon?url=${encodeURIComponent(urlStr)}`)
-    const data = await res.json()
-    if (data.data?.favicon) {
+    const data = await request.get('/scrape/favicon', { params: { url: urlStr } })
+    if (data?.data?.favicon) {
       form.value.icon = data.data.favicon
     }
     iconSuggestions.value = []
@@ -348,70 +435,116 @@ const iconKeywords = [
   'light', 'moon', 'sun', 'eye', 'cart', 'gift', 'pen', 'phone',
 ]
 
-async function fetchVectorIcons() {
+async function fetchVectorIcons(keyword) {
   matchingIcon.value = true
   iconSuggestions.value = []
   iconMatchMsg.value = '加载中...'
 
-  const shuffled = [...iconKeywords].sort(() => Math.random() - 0.5)
-  const words = shuffled.slice(0, 3 + Math.floor(Math.random() * 2))
-
-  const results = await Promise.allSettled(
-    words.map(w => fetch(`https://api.iconify.design/search?query=${w}&limit=12`).then(r => r.json()))
-  )
-
-  let allIcons = []
-  for (const r of results) {
-    if (r.status === 'fulfilled' && r.value.icons) {
-      allIcons.push(...r.value.icons)
+  if (keyword && keyword.trim()) {
+    // ===== 精准搜索模式 =====
+    const q = keyword.trim().toLowerCase()
+    try {
+      const res = await fetch(`https://api.iconify.design/search?query=${encodeURIComponent(q)}&limit=30`)
+      const data = await res.json()
+      if (data.icons?.length) {
+        const icons = data.icons.map(id => {
+          const [prefix, ...nameParts] = id.split(':')
+          const name = nameParts.join(':')
+          return { id, name: id, url: `https://api.iconify.design/${prefix}/${name}.svg` }
+        })
+        iconSuggestions.value = icons.slice(0, 30)
+        iconMatchMsg.value = ''
+      } else {
+        iconMatchMsg.value = `未找到「${q}」相关图标`
+      }
+    } catch {
+      iconMatchMsg.value = '搜索失败，请重试'
     }
-  }
-
-  if (allIcons.length) {
-    const unique = [...new Set(allIcons)].sort(() => Math.random() - 0.5).slice(0, 30)
-    iconSuggestions.value = unique.map(id => {
-      const [prefix, ...nameParts] = id.split(':')
-      const name = nameParts.join(':')
-      return { id, name: id, url: `https://api.iconify.design/${prefix}/${name}.svg` }
-    })
-    iconMatchMsg.value = ''
   } else {
-    iconMatchMsg.value = '未获取到图标，请重试'
+    // ===== 随机模式（原有逻辑） =====
+    const shuffled = [...iconKeywords].sort(() => Math.random() - 0.5)
+    const words = shuffled.slice(0, 3 + Math.floor(Math.random() * 2))
+
+    const results = await Promise.allSettled(
+      words.map(w => fetch(`https://api.iconify.design/search?query=${w}&limit=12`).then(r => r.json()))
+    )
+
+    let allIcons = []
+    for (const r of results) {
+      if (r.status === 'fulfilled' && r.value.icons) {
+        allIcons.push(...r.value.icons)
+      }
+    }
+
+    if (allIcons.length) {
+      const unique = [...new Set(allIcons)].sort(() => Math.random() - 0.5).slice(0, 30)
+      iconSuggestions.value = unique.map(id => {
+        const [prefix, ...nameParts] = id.split(':')
+        const name = nameParts.join(':')
+        return { id, name: id, url: `https://api.iconify.design/${prefix}/${name}.svg` }
+      })
+      iconMatchMsg.value = ''
+    } else {
+      iconMatchMsg.value = '未获取到图标，请重试'
+    }
   }
   matchingIcon.value = false
 }
 
 // 从后端代理抓取 IconArchive 彩色图标
-async function fetchColorIcons() {
+async function fetchColorIcons(keyword) {
   matchingIcon.value = true
   iconSuggestions.value = []
   iconMatchMsg.value = '加载中...'
 
   try {
-    const res = await fetch('/api/scrape/icons?source=archive')
+    const params = new URLSearchParams({ source: 'archive' })
+    if (keyword && keyword.trim()) {
+      params.set('keyword', keyword.trim().toLowerCase())
+    }
+    const res = await fetch(`/api/scrape/icons?${params.toString()}`)
     const data = await res.json()
     if (data.data?.icons?.length) {
       iconSuggestions.value = data.data.icons
       iconMatchMsg.value = ''
     } else {
-      iconMatchMsg.value = '未获取到图标，请重试'
+      iconMatchMsg.value = keyword ? `未找到「${keyword.trim()}」相关图标` : '未获取到图标，请重试'
     }
   } catch {
-    iconMatchMsg.value = '加载失败，请重试'
+    iconMatchMsg.value = '搜索失败，请重试'
   }
   matchingIcon.value = false
 }
 
-// 弹出选择浮层 → 选来源后拉取
+// 弹出选择浮层 → 选来源后切换到搜索面板
 function pickIconSource(source) {
-  showIconPicker.value = false
   iconSource.value = source
+  // 切换到搜索面板（不关闭弹窗）
+  iconSearchActive.value = true
+  iconSearchText.value = ''
+  iconActualKeyword.value = ''
+  iconSearched.value = false
+  // 默认加载随机图标
   if (source === 'vector') fetchVectorIcons()
   else fetchColorIcons()
 }
 
-// 换一批
+/** 关闭图标库面板，重置所有状态 */
+function closeIconPicker() {
+  showIconPicker.value = false
+  iconSearchActive.value = false
+  iconSearchText.value = ''
+  iconActualKeyword.value = ''
+  iconSearched.value = false
+  iconSuggestions.value = []
+  iconMatchMsg.value = ''
+}
+
+// 换一批（清除搜索词，回到随机模式）
 function refreshIcons() {
+  iconSearchText.value = ''
+  iconActualKeyword.value = ''
+  iconSearched.value = false
   if (iconSource.value === 'vector') fetchVectorIcons()
   else fetchColorIcons()
 }
@@ -1257,6 +1390,14 @@ select.input { cursor: pointer; }
   padding: 0 10px;
   font-size: 11px;
 }
+/* ====== 图标库面板头部 ====== */
+.icon-panel-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding-bottom: 8px; margin-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px; font-weight: 600; color: var(--text);
+}
+
 .icon-suggestions {
   margin-top: 8px;
   padding: 8px;
@@ -1312,6 +1453,79 @@ select.input { cursor: pointer; }
   color: var(--text3);
   width: 100%;
   margin-bottom: 2px;
+}
+
+/* ====== 图标搜索框 ====== */
+.icon-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  transition: border-color 0.15s;
+}
+.icon-search-bar:focus-within {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 20%, transparent);
+}
+.icon-search-icon {
+  font-size: 14px;
+  flex-shrink: 0;
+  opacity: 0.5;
+}
+.icon-search-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--text);
+  font-size: 13px;
+  padding: 4px 0;
+  min-width: 0;
+}
+.icon-search-input::placeholder {
+  color: var(--text3);
+  opacity: 0.7;
+}
+.icon-search-clear {
+  width: 22px !important;
+  height: 22px !important;
+  padding: 0 !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  color: var(--text3);
+  font-size: 12px;
+  transition: all 0.12s;
+  flex-shrink: 0;
+}
+.icon-search-clear:hover {
+  background: rgba(255,255,255,0.1);
+  color: var(--text);
+}
+.icon-search-hint {
+  font-size: 11px;
+  color: var(--primary);
+  margin: 4px 0 2px;
+  opacity: 0.8;
+}
+.icon-loading-hint {
+  text-align: center;
+  padding: 16px 8px;
+  color: var(--text3);
+  font-size: 12px;
+}
+.icon-empty-hint {
+  text-align: center;
+  padding: 16px 8px;
+  color: var(--text3);
+  font-size: 12px;
 }
 
 /* ====== 图标来源选择浮层 ====== */

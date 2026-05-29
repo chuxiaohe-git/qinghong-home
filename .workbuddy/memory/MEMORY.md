@@ -103,9 +103,13 @@ Python + Flask + Vue 3 + SQLite + Vite（前后端分离）
 
 ## 图标来源
 - 添加/编辑卡片时：
-  - **🌐 获取**：从 URL 提取域 → `favicon.im` 获取 favicon
+  - **🌐 获取**：从 URL 提取域 → `favicon.im` 获取 favicon（后端裁剪 50×50）→ **自动入库图库(type=icon)**
   - **🎨 图标库**：弹出二选一，选**纯色图标**（Iconify）或**彩色图标**（IconArchive）
-  - 支持 🔄 换一批
+  - 支持 🔍 **关键词搜索**：输入中文自动通过 MyMemory API 翻译为英文再搜索，英文直接搜；支持回车 + 搜索按钮
+  - 支持 🔄 **换一批**（随机模式，清除搜索词时恢复）
+- 纯色图标搜索：Iconify `search?query=xxx&limit=30`
+- 彩色图标搜索：后端 `/api/scrape/icons?source=archive&keyword=xxx` → IconArchive 搜索页 / tag 页兜底
+- **Favicon 管理**：获取的图标自动入库 `gallery_images` 表（image_type=icon），在设置→图库 Tab 的「图标」分类中可见；支持「🗑️ 清理未使用」一键删除未被任何书签引用的图标（`POST /api/gallery/cleanup-unused`）
 
 ## 搜索
 - 支持汉字、全拼、首拼匹配（标题、描述、分组名）
@@ -167,4 +171,4 @@ Python + Flask + Vue 3 + SQLite + Vite（前后端分离）
 - 前端 dist/ → 整体打包；后端 → 只放改动的 `.py`
 - 目录结构：`dist/` + `backend/` 直接对应服务器路径，抽出说明.txt 即可上传
 
-_最后更新：2026-05-19_
+_最后更新：2026-05-30_
