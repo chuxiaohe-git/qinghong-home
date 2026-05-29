@@ -19,16 +19,16 @@
 ## 🖥️ 截图
 
 <p align="center">
-  <img src="public/images/screenshots/home.png" width="80%" alt="主界面">
+  <img src="public/images/screenshots/home.png" width="95%" alt="主界面">
 </p>
 <p align="center">
-  <img src="public/images/screenshots/ai-chat.png" width="80%" alt="AI 对话">
+  <img src="public/images/screenshots/ai-chat.png" width="95%" alt="AI 对话">
 </p>
 <p align="center">
-  <img src="public/images/screenshots/notes.png" width="80%" alt="便签笔记">
+  <img src="public/images/screenshots/notes.png" width="95%" alt="便签笔记">
 </p>
 <p align="center">
-  <img src="public/images/screenshots/calendar.png" width="80%" alt="摸鱼日历">
+  <img src="public/images/screenshots/calendar.png" width="95%" alt="摸鱼日历">
 </p>
 
 ## 🛠️ 技术栈
