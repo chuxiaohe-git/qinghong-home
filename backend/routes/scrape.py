@@ -5,9 +5,7 @@ import time
 import io
 from flask import Blueprint, request
 from bs4 import BeautifulSoup
-from PIL import Image
 from utils.response import success, error
-from config import Config
 
 scrape_bp = Blueprint('scrape', __name__, url_prefix='/api/scrape')
 
@@ -127,8 +125,9 @@ def scrape_icons():
 FAVICON_SIZE = 50  # 固定裁剪尺寸
 
 
-def _resize_favicon(img: Image.Image) -> Image.Image:
+def _resize_favicon(img):
     """将图标居中裁剪为正方形并缩放到 FAVICON_SIZE"""
+    from PIL import Image
     w, h = img.size
     # 转 RGBA 统一处理（兼容 ico / 带 alpha 的 png）
     if img.mode != 'RGBA':
@@ -147,6 +146,9 @@ def _resize_favicon(img: Image.Image) -> Image.Image:
 @scrape_bp.route('/favicon', methods=['GET'])
 def fetch_favicon():
     """从网址获取图标，大图自动裁剪到 50x50 并存到本地"""
+    # 延迟导入，避免没装 Pillow 时整个服务崩掉
+    from config import Config
+
     url = request.args.get('url', '').strip()
     if not url:
         return error('请提供网址', 400)
@@ -160,7 +162,7 @@ def fetch_favicon():
         if not domain:
             return error('无法解析域名', 400)
 
-        # 收集候选图标 URL：页面声明 > favicon.im 兜底 > /favicon.ico
+        # 收集候选图标 URL
         candidates = []
 
         # ① 尝试从 HTML 中解析声明的 icon
@@ -191,20 +193,29 @@ def fetch_favicon():
         # ③ 标准 /favicon.ico
         candidates.append(f'https://{domain}/favicon.ico')
 
+        # 检查 Pillow 是否可用
+        try:
+            from PIL import Image as _PILImage
+        except ImportError:
+            _PILImage = None
+
         # 逐个尝试下载并处理
         for candidate in candidates:
             try:
                 img_resp = requests.get(candidate, headers=HEADERS, timeout=6)
                 if img_resp.status_code != 200:
                     continue
-                img = Image.open(io.BytesIO(img_resp.content))
-                img = _resize_favicon(img)
-                # 存盘
-                ext = 'png'
-                filename = f'fav_{domain}_{int(time.time())}.{ext}'
-                filepath = os.path.join(Config.UPLOAD_FOLDER, filename)
-                img.save(filepath, 'PNG')
-                return success({'favicon': f'/uploads/{filename}'})
+                # 有 Pillow 就裁剪保存，没有就直接返回 URL
+                if _PILImage is not None:
+                    img = _PILImage.open(io.BytesIO(img_resp.content))
+                    img = _resize_favicon(img)
+                    ext = 'png'
+                    filename = f'fav_{domain}_{int(time.time())}.{ext}'
+                    filepath = os.path.join(Config.UPLOAD_FOLDER, filename)
+                    img.save(filepath, 'PNG')
+                    return success({'favicon': f'/uploads/{filename}'})
+                else:
+                    return success({'favicon': candidate})
             except Exception:
                 continue
 
