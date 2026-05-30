@@ -38,21 +38,18 @@
         </button>
       </div>
 
-      <div :class="['wrap', section.group.display_mode === 'small' ? 'wrap-small' : '']">
+      <div :class="['wrap', section.group.display_mode === 'small' ? 'wrap-small' : '']" :data-group-id="section.group.id">
         <div
           v-for="(bm, idx) in section.bookmarks"
           :key="bm.id"
-          :class="[section.group.display_mode === 'small' ? 'card-small' : 'card', { 'dragging': dragBmId === bm.id }]"
-          draggable="true"
+          :class="[
+            section.group.display_mode === 'small' ? 'card-small' : 'card',
+          ]"
           :data-bm-id="bm.id"
           :data-group-id="section.group.id"
           :style="{ '--card-color': bm.bg_color || getRandomColor() }"
           @click="openUrl(bm)"
           @contextmenu.prevent="showContextMenu($event, bm)"
-          @dragstart="onCardDragStart($event, bm, section.group.id)"
-          @dragover.prevent="onCardDragOver($event, bm, section)"
-          @drop.prevent="onCardDrop($event, bm, section)"
-          @dragend="onCardDragEnd"
         >
           <a :href="bm.url" :target="bm.open_method || '_blank'" @click.prevent>
             <template v-if="section.group.display_mode === 'large'">
@@ -278,7 +275,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useGroupStore } from '@/stores/groups'
 import { useUserStore } from '@/stores/user'
 import request from '@/utils/request'
@@ -286,6 +283,7 @@ import { getBookmarks, createBookmark, updateBookmark, deleteBookmark as apiDele
 import { updateGroup } from '@/api/groups'
 import { pinyin } from 'pinyin-pro'
 import { getGallery, uploadImage } from '@/api/gallery'
+import Sortable from 'sortablejs'
 
 const props = defineProps({
   search: { type: String, default: '' },
@@ -822,45 +820,71 @@ function getGroupColor(group) {
   return groupColors[Math.abs(hash) % groupColors.length]
 }
 
-// 书签卡片拖拽排序（和仪表板相同的交换逻辑）
-let dragBmId = null, dragGroupId = null
+let sortableInstances = []
 
-function onCardDragStart(e, bm, gid) {
-  dragBmId = bm.id; dragGroupId = gid
-  e.dataTransfer.effectAllowed = 'move'
-  e.target.classList.add('dragging')
+function initSortable() {
+  // 销毁旧实例
+  sortableInstances.forEach(s => s.destroy())
+  sortableInstances = []
+
+  document.querySelectorAll('.wrap').forEach(wrapEl => {
+    // .wrap 的父级 .category-title 才有 data-group-id
+    const groupId = wrapEl.closest('.category-title')?.dataset?.groupId
+      || wrapEl.closest('[data-group-id]')?.dataset?.groupId
+    if (!groupId) return
+    const s = new Sortable(wrapEl, {
+      group: 'shared-bookmarks',
+      animation: 200,
+      easing: 'cubic-bezier(0.25, 0.1, 0.25, 1)',
+      ghostClass: 'card-ghost',
+      chosenClass: 'card-chosen',
+      dragClass: 'card-drag',
+      placeholderClass: 'card-placeholder',
+      onEnd: async (evt) => {
+        const toGroupId = evt.to.closest('.category-title')?.dataset?.groupId
+          || evt.to.closest('[data-group-id]')?.dataset?.groupId
+        if (!toGroupId) return
+        const all = [...allBookmarks.value]
+        const dragId = parseInt(evt.item.dataset.bmId)
+        const dragIdx = all.findIndex(b => b.id === dragId)
+        if (dragIdx === -1) return
+        const [dragBm] = all.splice(dragIdx, 1)
+        dragBm.group_id = parseInt(toGroupId)
+        // 根据 evt.to 中的 DOM 顺序计算插入位置
+        const siblingEls = [...evt.to.querySelectorAll('[data-bm-id]')]
+        const siblingIds = siblingEls.map(el => parseInt(el.dataset.bmId))
+        const myNewIdx = siblingIds.indexOf(dragId)
+        const newAll = allBookmarks.value.filter(b => b.id !== dragId)
+        const insertBeforeId = siblingEls[myNewIdx + 1]?.dataset?.bmId
+          ? parseInt(siblingEls[myNewIdx + 1].dataset.bmId)
+          : null
+        const insertIdx = insertBeforeId != null
+          ? newAll.findIndex(b => b.id === insertBeforeId)
+          : newAll.length
+        newAll.splice(insertIdx, 0, dragBm)
+        allBookmarks.value = newAll
+        const ids = newAll.filter(b => b.group_id === parseInt(toGroupId)).map(b => b.id)
+        reorderBookmarks(parseInt(toGroupId), ids).catch(e => console.error('reorder failed', e))
+      },
+    })
+    sortableInstances.push(s)
+  })
 }
-function onCardDragOver(e, targetBm, section) {
-  if (!dragBmId || dragGroupId !== section.group.id || dragBmId === targetBm.id) return
-  const all = allBookmarks.value
-  const dragIdx = all.findIndex(b => b.id === dragBmId)
-  const targetIdx = all.findIndex(b => b.id === targetBm.id)
-  if (dragIdx === -1 || targetIdx === -1) return
-  // 交换位置
-  [all[dragIdx], all[targetIdx]] = [all[targetIdx], all[dragIdx]]
-  allBookmarks.value = [...all]
-}
-function onCardDrop(e, targetBm, section) {
-  if (!dragBmId || dragGroupId !== section.group.id) return
-  const ids = allBookmarks.value.filter(b => b.group_id === section.group.id).map(b => b.id)
-  reorderBookmarks(section.group.id, ids).catch(() => {})
-}
-function onCardDragEnd(e) { if (e) e.target.classList.remove('dragging'); cleanupDrag() }
-function cleanupDrag() { dragBmId = null; dragGroupId = null; document.querySelectorAll('.card.dragging').forEach(el => el.classList.remove('dragging')) }
-// 全局保护：拖拽外部意外释放时强制清理
-document.addEventListener('dragend', cleanupDrag)
 
 onMounted(async () => {
   if (!props.guestSections) {
     await groupStore.fetchGroups()
     await loadAll()
   }
+  nextTick(() => { initSortable() })
   document.addEventListener('click', closeContextMenu)
 })
 onUnmounted(() => {
+  sortableInstances.forEach(s => s.destroy())
+  sortableInstances = []
   document.removeEventListener('click', closeContextMenu)
-  document.removeEventListener('dragend', cleanupDrag)
 })
+
 </script>
 
 <style scoped>
@@ -1009,7 +1033,33 @@ onUnmounted(() => {
   cursor: pointer;
 }
 .card.dragging { opacity: 0.4; transition: none; }
-.card.drag-over { border-color: var(--primary) !important; box-shadow: 0 0 0 2px var(--primary) !important; }
+/* SortableJS 占位框：提前显示目标插入位置的空框 */
+.card-placeholder {
+  background: color-mix(in srgb, var(--primary, #409eff) 8%, transparent) !important;
+  border: 2px dashed var(--primary, #409eff) !important;
+  border-radius: 12px;
+  transition: background 0.15s;
+}
+.card-small.card-placeholder {
+  border-radius: 10px;
+  border-width: 1.5px;
+}
+/* 拖拽镜像（跟随鼠标的卡片）*/
+.card-ghost {
+  opacity: 0.85;
+  transform: rotate(3deg) scale(1.03);
+  box-shadow: 0 8px 25px rgba(0,0,0,0.25);
+  transition: transform 0.18s, box-shadow 0.18s;
+}
+/* 选中状态（开始拖拽时源卡片的样式）*/
+.card-chosen {
+  opacity: 0.9;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.18);
+}
+/* 拖拽进行中 */
+.card-drag {
+  opacity: 0.5;
+}
 /* 左上角斜光效，线性渐变从左上到右下淡出 */
 .card::after {
   content: '';
@@ -1170,7 +1220,11 @@ onUnmounted(() => {
   border-color: rgba(var(--card-r), var(--card-g), var(--card-b), 0.2);
 }
 .card-small.dragging { opacity: 0.4; }
-.card-small.drag-over { border-color: var(--primary) !important; box-shadow: 0 0 0 2px var(--primary) !important; }
+/* SortableJS 小卡片占位框 */
+.card-small.card-placeholder {
+  border-radius: 10px;
+  border-width: 1.5px;
+}
 .card-small-body {
   display: flex;
   flex-direction: column;

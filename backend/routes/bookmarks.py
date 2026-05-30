@@ -154,18 +154,20 @@ def reorder_bookmarks():
         return error('缺少 group_id 或 ids')
 
     try:
-        # 验证这些书签都属于该用户和该分组
+        # 验证这些书签都属于该用户
         existing = Bookmark.query.filter(
             Bookmark.id.in_(ids),
-            Bookmark.user_id == user_id,
-            Bookmark.group_id == group_id
+            Bookmark.user_id == user_id
         ).all()
 
         if len(existing) != len(ids):
             return error('部分书签不存在', 400)
 
         for sort_order, bid in enumerate(ids):
-            Bookmark.query.filter_by(id=bid).update({'sort_order': sort_order})
+            Bookmark.query.filter_by(id=bid, user_id=user_id).update({
+                'sort_order': sort_order,
+                'group_id': group_id   # 自动更新分组（支持跨分组拖拽）
+            })
 
         db.session.commit()
     except Exception as e:
