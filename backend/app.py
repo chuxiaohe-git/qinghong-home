@@ -22,6 +22,7 @@ from routes.scratch_note import scratch_note_bp
 from routes.guest import guest_bp
 from routes.ai import ai_bp
 from routes.conversation import conversation_bp
+from routes.wiki import wiki_bp
 import bcrypt
 
 logger = logging.getLogger(__name__)
@@ -67,6 +68,7 @@ def create_app():
     app.register_blueprint(backup_bp)
     app.register_blueprint(calendar_bp)
     app.register_blueprint(scratch_note_bp)
+    app.register_blueprint(wiki_bp)
     app.register_blueprint(guest_bp)
     app.register_blueprint(ai_bp)
     app.register_blueprint(conversation_bp)
@@ -87,6 +89,10 @@ def create_app():
     @app.route('/uploads/<path:filename>')
     def serve_upload(filename):
         return send_from_directory(Config.UPLOAD_FOLDER, filename)
+
+    @app.route('/tinymce/<path:path>')
+    def serve_tinymce(path):
+        return send_from_directory(os.path.join(app.static_folder, 'tinymce'), path)
 
     # Catch-all for SPA routes
     @app.errorhandler(404)

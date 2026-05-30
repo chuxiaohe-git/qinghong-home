@@ -1,10 +1,14 @@
-from flask import Blueprint, request
+import os
+import uuid
+from flask import Blueprint, request, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from extensions import db
 from models.scratch_note import Notebook, Note
 from models.todo import Todo
+from config import Config
 from utils.response import success, error
 from datetime import datetime, timezone
+from werkzeug.utils import secure_filename
 import logging
 
 logger = logging.getLogger(__name__)
@@ -315,3 +319,45 @@ def delete_note(note_id):
         logger.error(f"[scratch_note]: DB error: {e}")
         return error('操作失败', status=500)
     return success(message='笔记已删除')
+
+
+# ═══════════════════════════════════════════
+#  Note Image Upload
+# ═══════════════════════════════════════════
+
+ALLOWED_IMG = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'}
+
+
+@scratch_note_bp.route('/notes/<int:note_id>/upload-image', methods=['POST'])
+@jwt_required()
+def upload_note_image(note_id):
+    """上传笔记图片（粘贴/拖拽插入）"""
+    user_id = int(get_jwt_identity())
+
+    # 验证笔记归属
+    try:
+        note = Note.query.filter_by(id=note_id, user_id=user_id).first()
+    except Exception as e:
+        logger.error(f"[scratch_note]: query error: {e}")
+        return error('查询失败', status=500)
+    if not note:
+        return error('笔记不存在', 404)
+
+    if 'image' not in request.files:
+        return error('没有上传文件')
+
+    file = request.files['image']
+    if file.filename == '':
+        return error('文件名为空')
+
+    ext = file.filename.rsplit('.', 1)[-1].lower() if '.' in file.filename else 'png'
+    if ext not in ALLOWED_IMG:
+        return error('不支持的图片格式，仅支持 png/jpg/gif/webp/bmp')
+
+    filename = f'{uuid.uuid4().hex}.{ext}'
+    filepath = os.path.join(Config.UPLOAD_FOLDER, filename)
+    file.save(filepath)
+
+    url = f'/uploads/{filename}'
+    logger.info(f"[scratch_note] 笔记图片上传: note_id={note_id}, url={url}, user_id={user_id}")
+    return success(data={'url': url}, message='图片已上传')

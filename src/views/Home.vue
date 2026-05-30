@@ -11,7 +11,12 @@
           :totalBookmarks="totalBookmarks"
           :bookmarkCounts="bookmarkCounts"
           :activeView="activeView"
+          :wikiDocs="wikiDocs"
+          :currentWikiDocId="currentWikiDoc?.id"
           @navigate="handleNavigate"
+          @select-wiki-doc="selectWikiDoc"
+          @create-wiki-doc="createWikiDoc"
+          @delete-wiki-doc="deleteWikiDoc"
         />
       </aside>
 
@@ -217,8 +222,20 @@
               <AIChat />
             </div>
 
+            <!-- 摸鱼WIKI -->
+            <div v-if="!store.isGuest && activeView === 'wiki'" class="cal-wrapper">
+              <WikiPanel
+                :currentDoc="currentWikiDoc"
+                :wikiDocs="wikiDocs"
+                @close-doc="closeWikiDoc"
+                @doc-updated="onWikiDocUpdated"
+                @doc-deleted="onWikiDocDeleted"
+                @select-doc="selectWikiDoc"
+              />
+            </div>
+
             <!-- 其他页面（便签/统计）显示黑板 -->
-            <NotesView v-if="!store.isGuest && activeView !== 'bookmarks' && activeView !== 'todo-calendar' && activeView !== 'scratch-note' && activeView !== 'ai-chat'" />
+            <NotesView v-if="!store.isGuest && activeView !== 'bookmarks' && activeView !== 'todo-calendar' && activeView !== 'scratch-note' && activeView !== 'ai-chat' && activeView !== 'wiki'" />
           </main>
           <aside v-if="!store.isGuest && showTodo" class="todo-sidebar">
             <TodoPanel :refreshKey="todoRefreshKey" @todo-changed="onTodoChanged" @jump-to-note="onJumpToNote" @close="showTodo = false" />
@@ -288,6 +305,7 @@ import DashMusic from '@/components/center/DashMusic.vue'
 import DashFood from '@/components/center/DashFood.vue'
 import DashGame from '@/components/center/DashGame.vue'
 import ScratchNote from '@/components/center/ScratchNote.vue'
+import WikiPanel from '@/components/center/WikiPanel.vue'
 import TodoPanel from '@/components/todo/TodoPanel.vue'
 import { playing, currentSong, lyrics, currentTime, audioEl } from '@/composables/useMusicPlayer'
 import SettingsModal from '@/components/settings/SettingsModal.vue'
@@ -362,6 +380,50 @@ function onJumpToNote({ noteId, notebookId, isNotebook }) {
 // ── 提醒系统 ──
 const { showAlarm: alarmShow, currentAlarm: alarmTodo, dismissAlarm: alarmDismiss, snoozeAlarm: alarmSnooze } = useReminder()
 const activeView = ref('bookmarks')
+
+// ── WIKI 状态管理 ──
+const wikiDocs = ref([])
+const currentWikiDoc = ref(null)
+
+async function loadWikiDocs() {
+  const { getWikiDocs } = await import('@/api/wiki')
+  const res = await getWikiDocs()
+  if (res.code === 0) wikiDocs.value = res.data || []
+}
+async function selectWikiDoc(id) {
+  activeView.value = 'wiki'
+  const { getWikiDoc } = await import('@/api/wiki')
+  const res = await getWikiDoc(id)
+  if (res.code === 0) currentWikiDoc.value = res.data
+}
+async function createWikiDoc() {
+  const { createWikiDoc } = await import('@/api/wiki')
+  const title = prompt('请输入文档标题：')
+  if (!title?.trim()) return
+  const res = await createWikiDoc(title.trim(), '# 欢迎\n\n开始编写你的文档...')
+  if (res.code === 0) {
+    wikiDocs.value.unshift(res.data)
+    activeView.value = 'wiki'
+    currentWikiDoc.value = res.data
+  }
+}
+async function deleteWikiDoc(id) {
+  if (!confirm('确定删除此文档？')) return
+  const { deleteWikiDoc } = await import('@/api/wiki')
+  await deleteWikiDoc(id)
+  wikiDocs.value = wikiDocs.value.filter(d => d.id !== id)
+  if (currentWikiDoc.value?.id === id) currentWikiDoc.value = null
+}
+function closeWikiDoc() { currentWikiDoc.value = null }
+function onWikiDocUpdated(updated) {
+  const idx = wikiDocs.value.findIndex(d => d.id === updated.id)
+  if (idx !== -1) wikiDocs.value[idx] = { ...wikiDocs.value[idx], ...updated }
+  if (currentWikiDoc.value?.id === updated.id) currentWikiDoc.value = { ...currentWikiDoc.value, ...updated }
+}
+function onWikiDocDeleted(id) {
+  wikiDocs.value = wikiDocs.value.filter(d => d.id !== id)
+  currentWikiDoc.value = null
+}
 
 // 仪表板卡片拖拽排序
 const DEFAULT_CARD_ORDER = ['quote', 'clock', 'game', 'music', 'food']
@@ -672,6 +734,8 @@ function handleSearch(q) {
 
 function handleNavigate(view) {
   activeView.value = view
+  if (view === 'wiki') loadWikiDocs()
+  if (view !== 'wiki') currentWikiDoc.value = null
 }
 
 // 主题切换
@@ -771,11 +835,12 @@ onMounted(async () => {
     fetchQuote()
   }
   window.addEventListener('bg-update', handleBgUpdate)
-  window.addEventListener('dashboard-cards-changed', (e) => {
+  function onDashCardsChanged(e) {
     if (e.detail && Array.isArray(e.detail.hiddenCards)) {
       hiddenCards.value = e.detail.hiddenCards
     }
-  })
+  }
+  window.addEventListener('dashboard-cards-changed', onDashCardsChanged)
   document.addEventListener('click', closeMenu)
   // AI 操作完成后刷新待办和收藏
   window.addEventListener('ai-action-done', onAiActionDone)
@@ -785,7 +850,7 @@ onUnmounted(() => {
   stopCarousel()
   if (quoteTimer) clearInterval(quoteTimer)
   window.removeEventListener('bg-update', handleBgUpdate)
-  window.removeEventListener('dashboard-cards-changed')
+  window.removeEventListener('dashboard-cards-changed', onDashCardsChanged)
   document.removeEventListener('click', closeMenu)
   window.removeEventListener('ai-action-done', onAiActionDone)
 })
@@ -1097,6 +1162,17 @@ onUnmounted(() => {
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
+}
+.wiki-placeholder {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  color: var(--text3);
+  font-size: 16px;
+  opacity: 0.6;
 }
 .greeting-name {
   background: linear-gradient(135deg, #6C5CE7, #00CEC9);
@@ -1438,6 +1514,9 @@ onUnmounted(() => {
 /* ════════════════════════════════════════
    移动端适配（不影响 PC 端）
    ════════════════════════════════════════ */
+/* 底部导航 — 默认隐藏 */
+.mobile-bottom-nav { display: none; }
+
 @media (max-width: 768px) {
   .sidebar { display:none; }
   .todo-sidebar { display:none; }

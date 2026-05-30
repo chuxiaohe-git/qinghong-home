@@ -100,6 +100,21 @@
     </div>
 
     <div class="section-divider"></div>
+
+    <h3 class="section-title">导航栏显示</h3>
+    <p class="hint">控制左侧导航栏各项目的显示与隐藏（网页收藏默认显示）</p>
+
+    <div class="card-toggle-grid">
+      <label v-for="nav in NAV_OPTIONS" :key="nav.key"
+        class="card-toggle-chip" :class="{ off: hiddenNav.includes(nav.key) }">
+        <input type="checkbox" :checked="!hiddenNav.includes(nav.key)"
+          @change="toggleNav(nav.key)" />
+        <span class="chip-icon">{{ nav.icon }}</span>
+        <span>{{ nav.label }}</span>
+      </label>
+    </div>
+
+    <div class="section-divider"></div>
     <button class="btn-primary" :disabled="saving" @click="save">
       {{ saving ? '保存中...' : '保存设置' }}
     </button>
@@ -124,6 +139,12 @@ const CARD_OPTIONS = [
   { key: 'food', icon: '🃏', label: '抽卡' },
   { key: 'websearch', icon: '🔍', label: '网络搜索' },
 ]
+const NAV_OPTIONS = [
+  { key: 'calendar', icon: '📅', label: '摸鱼日历' },
+  { key: 'notes', icon: '📝', label: '摸鱼笔记' },
+  { key: 'wiki', icon: '📖', label: '摸鱼WIKI' },
+  { key: 'ai', icon: '🤖', label: 'AI对话' },
+]
 const bgColorDark = ref('#1a1a2e')
 const bgColorLight = ref('#eef2ff')
 const currentBgColor = computed(() => currentTheme.value === 'dark' ? bgColorDark.value : bgColorLight.value)
@@ -138,6 +159,7 @@ const saving = ref(false)
 const msg = ref('')
 const uploadInput = ref(null)
 const hiddenCards = ref([])
+const hiddenNav = ref([])
 
 function getImgUrl(img) {
   return img.url || `/uploads/${img.filename}`
@@ -204,6 +226,15 @@ function toggleCard(key) {
   }
 }
 
+function toggleNav(key) {
+  const idx = hiddenNav.value.indexOf(key)
+  if (idx >= 0) {
+    hiddenNav.value.splice(idx, 1)
+  } else {
+    hiddenNav.value.push(key)
+  }
+}
+
 async function load() {
   try {
     const [res, galleryRes] = await Promise.all([
@@ -220,7 +251,10 @@ async function load() {
         selectedIds.value = parsed.wallpaperIds || []
       carouselEnabled.value = parsed.carouselEnabled || false
       interval.value = parsed.interval || 1
-      // 恢复隐藏卡片状态
+      // 恢复隐藏导航状态
+      if (parsed.hidden_nav && Array.isArray(parsed.hidden_nav)) {
+        hiddenNav.value = parsed.hidden_nav
+      }
       if (parsed.hidden_cards && Array.isArray(parsed.hidden_cards)) {
         hiddenCards.value = parsed.hidden_cards
       }
@@ -249,6 +283,7 @@ async function save() {
         carouselEnabled: carouselEnabled.value,
         interval: interval.value,
         hidden_cards: [...hiddenCards.value],
+        hidden_nav: [...hiddenNav.value],
       }),
     })
     msg.value = '保存成功'
@@ -257,6 +292,10 @@ async function save() {
     // 通知主页同步隐藏状态
     window.dispatchEvent(new CustomEvent('dashboard-cards-changed', {
       detail: { hiddenCards: [...hiddenCards.value] }
+    }))
+    // 通知侧边栏同步导航显隐
+    window.dispatchEvent(new CustomEvent('nav-visibility-changed', {
+      detail: { hiddenNav: [...hiddenNav.value] }
     }))
     // 触发全局背景更新，传当前模式
     const theme = currentTheme.value

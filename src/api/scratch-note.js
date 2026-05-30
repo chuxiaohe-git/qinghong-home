@@ -36,3 +36,13 @@ export const reorderNotes = (orderedIds) =>
 
 export const deleteNote = (id) =>
   request.delete(`/notes/${id}`)
+
+// ═══ Note Image Upload ═══
+
+export const uploadNoteImage = (noteId, file) => {
+  const formData = new FormData()
+  formData.append('image', file)
+  return request.post(`/notes/${noteId}/upload-image`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  })
+}
