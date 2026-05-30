@@ -72,6 +72,16 @@
               </div>
             </template>
           </a>
+          <!-- 标记徽章 -->
+          <div
+            v-if="bm.marker && MARKER_TYPES[bm.marker]"
+            class="marker-badge"
+            :style="{ '--marker-color': MARKER_TYPES[bm.marker].color }"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" :fill="MARKER_TYPES[bm.marker].fill ? 'currentColor' : 'none'" stroke="currentColor" stroke-width="1.8">
+              <path :d="MARKER_TYPES[bm.marker].path"/>
+            </svg>
+          </div>
         </div>
       </div>
     </template>
@@ -106,6 +116,54 @@
           </svg>
           <span>编辑</span>
         </button>
+        <!-- 标记 -->
+        <button
+          class="ctx-item ctx-marker-trigger"
+          :class="{ 'has-marker': ctxMenu.bookmark?.marker }"
+          @click.stop="showMarkerMenu = !showMarkerMenu"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+          </svg>
+          <span>{{ ctxMenu.bookmark?.marker && MARKER_TYPES[ctxMenu.bookmark.marker]
+            ? '标记：' + MARKER_TYPES[ctxMenu.bookmark.marker].label
+            : '标记' }}</span>
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="9 18 15 12 9 6"/>
+          </svg>
+        </button>
+        <!-- 标记选择器 二级菜单 -->
+        <div
+          v-if="showMarkerMenu"
+          class="ctx-submenu"
+          @click.stop
+        >
+          <button
+            v-if="ctxMenu.bookmark?.marker"
+            class="ctx-marker-option"
+            @click="setMarker(ctxMenu.bookmark, null); showMarkerMenu = false"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#999" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+            <span>取消标记</span>
+          </button>
+          <button
+            v-for="(def, key) in MARKER_TYPES"
+            :key="key"
+            class="ctx-marker-option"
+            :class="{ active: ctxMenu.bookmark?.marker === key }"
+            :style="{ '--m-color': def.color }"
+            @click="setMarker(ctxMenu.bookmark, key); showMarkerMenu = false"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24"
+              :fill="def.fill ? 'currentColor' : 'none'"
+              stroke="currentColor" stroke-width="1.8">
+              <path :d="def.path"/>
+            </svg>
+            <span>{{ def.label }}</span>
+          </button>
+        </div>
         <button class="ctx-item ctx-danger" @click="deleteBookmark(ctxMenu.bookmark)">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="3 6 5 6 21 6"/>
@@ -279,11 +337,51 @@ import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
 import { useGroupStore } from '@/stores/groups'
 import { useUserStore } from '@/stores/user'
 import request from '@/utils/request'
-import { getBookmarks, createBookmark, updateBookmark, deleteBookmark as apiDelete, reorderBookmarks } from '@/api/bookmarks'
+import { getBookmarks, createBookmark, updateBookmark, deleteBookmark as apiDelete, reorderBookmarks, updateBookmarkMarker } from '@/api/bookmarks'
 import { updateGroup } from '@/api/groups'
 import { pinyin } from 'pinyin-pro'
 import { getGallery, uploadImage } from '@/api/gallery'
 import Sortable from 'sortablejs'
+
+// 标记定义：名称、CSS 颜色、SVG 路径数据（viewBox 0 0 24 24）
+const MARKER_TYPES = {
+  star: {
+    label: '金星',
+    color: '#FFA500',
+    path: 'M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z',
+    fill: true,
+  },
+  heart: {
+    label: '红心',
+    color: '#E53935',
+    path: 'M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z',
+    fill: true,
+  },
+  fire: {
+    label: '火焰',
+    color: '#FF5722',
+    path: 'M12 23c-3.87 0-7-3.13-7-7 0-3.53 2.61-6.43 5.37-9.06A9.83 9.83 0 0 0 8 4c0-1.1.9-2 2-2 .44 0 .86.15 1.19.4A10.01 10.01 0 0 1 19 11c0 3.87-3.13 7-7 7z',
+    fill: true,
+  },
+  target: {
+    label: '靶心',
+    color: '#1565C0',
+    path: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm0-14c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 9c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3z',
+    fill: false,
+  },
+  flag: {
+    label: '旗帜',
+    color: '#2E7D32',
+    path: 'M14.4 6L14 4H5v17h2v-7h5.6l.4 2h7V6z',
+    fill: false,
+  },
+  sparkle: {
+    label: '闪光',
+    color: '#7C4DFF',
+    path: 'M12 2l1.5 6.5L20 10l-6.5 1.5L12 18l-1.5-6.5L4 10l6.5-1.5L12 2zm6 12l1 3 3 1-3 1-1 3-1-3-3-1 3-1 1-3z',
+    fill: false,
+  },
+}
 
 const props = defineProps({
   search: { type: String, default: '' },
@@ -319,6 +417,7 @@ const allBookmarks = ref([])
 
 // 右键菜单
 const ctxMenu = ref({ visible: false, x: 0, y: 0, bookmark: null })
+const showMarkerMenu = ref(false)
 
 // 弹窗
 const showModal = ref(false)
@@ -682,7 +781,8 @@ async function loadAll() {
 
 // ====== 右键菜单 ======
 function showContextMenu(e, bm) {
-  const maxX = window.innerWidth - 160
+  showMarkerMenu.value = false
+  const maxX = window.innerWidth - 280
   const maxY = window.innerHeight - 100
   ctxMenu.value = {
     visible: true,
@@ -693,6 +793,17 @@ function showContextMenu(e, bm) {
 }
 function closeContextMenu() {
   ctxMenu.value.visible = false
+  showMarkerMenu.value = false
+}
+
+// ====== 标记 ======
+function setMarker(bm, marker) {
+  if (!bm) return
+  const oldMarker = bm.marker
+  bm.marker = marker
+  updateBookmarkMarker(bm.id, marker).catch(() => {
+    bm.marker = oldMarker  // 失败回滚
+  })
 }
 
 // ====== 编辑 ======
@@ -1285,12 +1396,11 @@ onUnmounted(() => {
 .context-menu {
   position: fixed;
   z-index: 999;
-  width: 140px;
+  min-width: 160px;
   background: var(--bg-menu);
   border: 1px solid var(--border);
   border-radius: 10px;
   box-shadow: var(--shadow);
-  overflow: hidden;
   padding: 6px;
 }
 .ctx-item {
@@ -1314,6 +1424,88 @@ onUnmounted(() => {
 .ctx-danger:hover {
   background: rgba(255, 107, 107, 0.15);
   color: var(--danger);
+}
+/* 标记触发器按钮（可长一点） */
+.ctx-marker-trigger {
+  gap: 10px;
+}
+.ctx-marker-trigger span {
+  flex: 1;
+  text-align: left;
+}
+.ctx-marker-trigger.has-marker {
+  color: var(--warning);
+}
+.ctx-marker-trigger svg:last-child {
+  opacity: 0.4;
+  flex-shrink: 0;
+}
+/* 标记选择器二级菜单 */
+.ctx-submenu {
+  position: absolute;
+  left: calc(100% + 4px);
+  top: 42px;
+  z-index: 1000;
+  background: var(--bg-menu);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  padding: 6px;
+  min-width: 120px;
+}
+.ctx-marker-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 12px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  color: var(--text2);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.ctx-marker-option:hover {
+  background: rgba(255,255,255,0.08);
+  color: var(--text);
+}
+.ctx-marker-option.active {
+  color: var(--m-color, var(--warning));
+  background: color-mix(in srgb, var(--m-color, var(--warning)) 10%, transparent);
+}
+.ctx-marker-option svg {
+  flex-shrink: 0;
+}
+
+/* ====== 卡片标记徽章 ====== */
+.marker-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--marker-color, #FFA500);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  z-index: 5;
+  pointer-events: none;
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--marker-color, #FFA500) 40%, transparent);
+}
+/* 小卡片标记徽章 */
+.card-small .marker-badge {
+  width: 18px;
+  height: 18px;
+  top: 4px;
+  right: 4px;
+}
+.card-small .marker-badge svg {
+  width: 12px;
+  height: 12px;
 }
 
 @keyframes gradientShift {

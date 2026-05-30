@@ -175,3 +175,28 @@ def reorder_bookmarks():
         logger.error(f"[bookmarks]: DB error: {e}")
         return error('操作失败', status=500)
     return success(message='排序已更新')
+
+
+@bookmarks_bp.route('/<int:bookmark_id>/marker', methods=['PATCH'])
+@jwt_required()
+def update_bookmark_marker(bookmark_id):
+    """更新书签标记（star/heart/fire/target/flag/sparkle/null）"""
+    user_id = int(get_jwt_identity())
+    data = request.get_json() or {}
+    marker = data.get('marker')  # string or null
+
+    valid_markers = {'star', 'heart', 'fire', 'target', 'flag', 'sparkle'}
+    if marker is not None and marker not in valid_markers:
+        return error('无效的标记类型', 400)
+
+    try:
+        bk = Bookmark.query.filter_by(id=bookmark_id, user_id=user_id).first()
+        if not bk:
+            return error('书签不存在', 404)
+        bk.marker = marker
+        db.session.commit()
+        return success(data=bk.to_dict(), message='标记已更新')
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"[bookmarks]: marker error: {e}")
+        return error('操作失败', status=500)

@@ -17,3 +17,6 @@ export const deleteBookmark = (id) =>
 
 export const reorderBookmarks = (groupId, ids) =>
   request.put('/bookmarks/reorder', { group_id: groupId, ids })
+
+export const updateBookmarkMarker = (id, marker) =>
+  request.patch(`/bookmarks/${id}/marker`, { marker })

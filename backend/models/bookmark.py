@@ -15,6 +15,7 @@ class Bookmark(db.Model):
     bg_color = db.Column(db.String(20), default='')
     open_method = db.Column(db.String(10), default='_blank')  # _blank / _self
     sort_order = db.Column(db.Integer, default=0)
+    marker = db.Column(db.String(20), default=None, nullable=True)  # star/heart/fire/target/flag/sparkle
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     def to_dict(self):
@@ -29,4 +30,5 @@ class Bookmark(db.Model):
             'bg_color': self.bg_color,
             'open_method': self.open_method,
             'sort_order': self.sort_order,
+            'marker': self.marker,
         }

@@ -163,6 +163,24 @@ Python + Flask + Vue 3 + SQLite + Vite（前后端分离）
 - **2026-05-15**：便签纹理 SVG→PNG 改造、拖拽竞态/视觉消失 Bug 修复、跨组件拖拽修复、数据库合并(calendar_todos→todos)、双面板联动、摸鱼日历 UI v3 美化
 - **2026-05-16**：摸鱼日历 UI 重构为实体厚重卷轴风格；今天列改为暖金宽条；装订线F方案；空状态「奉旨摸鱼」；**移动端适配**（768px断点，底部导航、独立移动日历MobileCalendarView、暴打BOSS游戏页MobileGameView、全屏按钮、安全区域）
 
+## 卡片拖拽（SortableJS）
+
+**2026-05-30 重写**：改用 SortableJS（项目已有依赖 `^1.15.7`）替代原生 HTML5 Drag & Drop。
+- 每个 `.wrap` 容器初始化 Sortable，`group: 'shared-bookmarks'` 支持跨容器拖放
+- `placeholderClass: 'card-placeholder'` —— 拖拽时在目标位置显示蓝色虚线占位框
+- `ghostClass: 'card-ghost'` —— 拖拽镜像（旋转 + 放大 + 阴影）
+- `onEnd` 回调：根据 DOM 顺序计算排序 → 更新 `allBookmarks.value` → 调 API 保存
+
+**后端 reorder 接口**（`bookmarks.py:144`）：
+- `PUT /bookmarks/reorder` 接收 `{ group_id, ids[] }`
+- 只校验 `user_id` + 书签存在性，不校验 `group_id`（支持跨分组）
+- 排序时自动更新 `group_id`，跨分组拖拽也持久化
+
+**踩坑**：
+- `import Sortable` 必须在模块顶层，不能放在函数中间
+- `nextTick` 必须显式从 `vue` import
+- `cubic-bezier` 不是 `cubic-bezier`
+
 ## 更新文件打包规则（踩坑记录）
 
 - **只有用户说"更新文件"** 才能动更新文件夹
