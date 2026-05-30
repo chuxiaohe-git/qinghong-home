@@ -231,6 +231,7 @@
                 @doc-updated="onWikiDocUpdated"
                 @doc-deleted="onWikiDocDeleted"
                 @select-doc="selectWikiDoc"
+                @create-wiki-doc="createWikiDoc"
               />
             </div>
 
@@ -606,6 +607,10 @@ async function loadBgConfig() {
       if (parsed.hidden_cards && Array.isArray(parsed.hidden_cards)) {
         hiddenCards.value = parsed.hidden_cards
         localStorage.setItem('dash_hidden_cards', JSON.stringify(parsed.hidden_cards))
+      }
+      // 从数据库恢复导航显隐状态
+      if (parsed.hidden_nav && Array.isArray(parsed.hidden_nav)) {
+        localStorage.setItem('hidden_nav', JSON.stringify(parsed.hidden_nav))
       }
       // 从数据库恢复搜索引擎列表
       if (parsed.search_engines && Array.isArray(parsed.search_engines) && parsed.search_engines.length > 0) {
@@ -1138,6 +1143,7 @@ onUnmounted(() => {
   min-width: 0;
   scrollbar-width: none;
   -ms-overflow-style: none;
+  background: var(--bg);
 }
 .main::-webkit-scrollbar {
   display: none;

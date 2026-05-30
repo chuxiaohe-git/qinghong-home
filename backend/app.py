@@ -137,6 +137,8 @@ def _migrate_columns():
         'ALTER TABLE todos ADD COLUMN color VARCHAR(7)',
         'ALTER TABLE todos ADD COLUMN label VARCHAR(50)',
         'ALTER TABLE users ADD COLUMN token_version INTEGER DEFAULT 0',
+        'ALTER TABLE wiki_docs ADD COLUMN icon VARCHAR(10) DEFAULT \'📄\'',
+        'ALTER TABLE wiki_docs ADD COLUMN summary VARCHAR(200) DEFAULT \'\'',
     ]
     for sql in migrations:
         try:

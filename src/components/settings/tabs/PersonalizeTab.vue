@@ -158,7 +158,7 @@ const uploading = ref(false)
 const saving = ref(false)
 const msg = ref('')
 const uploadInput = ref(null)
-const hiddenCards = ref([])
+const hiddenCards = ref(JSON.parse(localStorage.getItem('dash_hidden_cards') || '[]'))
 const hiddenNav = ref([])
 
 function getImgUrl(img) {

@@ -9,6 +9,8 @@ class WikiDoc(db.Model):
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
     title = db.Column(db.String(200), nullable=False, default='')
     content = db.Column(db.Text, default='')
+    icon = db.Column(db.String(10), default='📄')
+    summary = db.Column(db.String(200), default='')
     sort_order = db.Column(db.Integer, default=0)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc),
@@ -19,6 +21,8 @@ class WikiDoc(db.Model):
             'id': self.id,
             'user_id': self.user_id,
             'title': self.title,
+            'icon': self.icon or '📄',
+            'summary': self.summary or '',
             'sort_order': self.sort_order,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
